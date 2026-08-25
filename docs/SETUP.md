@@ -3,8 +3,8 @@
 ## Requisitos
 
 - Node 22 (ver `.nvmrc`) y pnpm 9 (`corepack enable` o `npm i -g pnpm@9.12.0`)
-- Python 3.12+ y [uv](https://docs.astral.sh/uv/) para `apps/api` (**pendiente de instalar en esta máquina — TASK-0008**)
-- Docker (opcional en Fase 0; necesario desde Fase 1 para Postgres/Redis — **TASK-0009**)
+- Python 3.12+ y [uv](https://docs.astral.sh/uv/) para `apps/api` (instalados — TASK-0008)
+- Docker, para Postgres/Redis/Mailpit (**pendiente de instalar/verificar en esta máquina — TASK-0009**; sin Docker, `apps/api` funciona igualmente para tests unitarios/integración vía SQLite, pero no hay Postgres real todavía)
 
 ## Lado web (Next.js) — funciona ya
 

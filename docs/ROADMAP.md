@@ -29,16 +29,15 @@ instalar pero sin verificar todavía — ver TASK-0008).
 
 ---
 
-## Fase 1 – Identidad, familias y alumnos (estimación pendiente)
+## Fase 1 – Identidad, familias y alumnos (en curso)
 
 **Objetivo:** login por rol (`parent`/`staff`/`admin`) y CRUD interno de
 familias, alumnos y contratos, con el invariante `familyId` ya aplicado.
 
-- Backend: Prisma-equivalente en Python (SQLAlchemy + Alembic), modelos
-  `User`/`Family`/`Student`/`Contract`, primera migración.
-- Backend: auth JWT + guard que inyecta `familyId` para rol `parent`.
-- Backend: CRUD interno (rol `staff`/`admin`) de familias/alumnos/contratos.
-- Frontend: login; layout autenticado distinto para padre vs. staff.
+- ✅ Backend: modelos `User`/`Family`/`Student`/`Contract` (SQLAlchemy) + primera migración Alembic (TASK-0016).
+- ✅ Backend: auth JWT + hash de contraseña, `POST /auth/login` (TASK-0017).
+- ⏳ Backend: dependencia que inyecta `familyId` para rol `parent` + CRUD interno (rol `staff`/`admin`) de familias/alumnos/contratos (TASK-0018).
+- ⏳ Frontend: login; layout autenticado distinto para padre vs. staff (TASK-0019).
 
 No se empieza a construir sobre datos reales de facturación hasta que este
 invariante esté probado con tests — es la pieza de seguridad más importante

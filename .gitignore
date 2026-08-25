@@ -16,6 +16,8 @@ venv/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+*.db
+*.sqlite3
 
 # Env
 .env

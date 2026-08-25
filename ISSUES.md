@@ -17,18 +17,18 @@ solo aquí.
 
 ## Fase 0 — Fundación operativa
 
-| ID        | Título                                                                              | Responsable | Estado    | Cierre     | Refs / Notas                                                                                    |
-| --------- | ----------------------------------------------------------------------------------- | ----------- | --------- | ---------- | ----------------------------------------------------------------------------------------------- |
-| TASK-0001 | Estructura monorepo (pnpm+turbo para JS, uv/pyproject para Python) + docs iniciales | Agente      | Hecha     | 2026-08-25 | Commit inicial; incluye ARCHITECTURE/DATA_MODEL/ROADMAP/AGENTS/CONTRIBUTING/SETUP               |
-| TASK-0002 | API FastAPI mínima: GET /health, CORS, puerto por API_PORT, sin DB                  | Agente      | Hecha     | 2026-08-25 | SQLAlchemy diferido a Fase 1; sin verificar en runtime (falta Python/uv, TASK-0008)             |
-| TASK-0003 | Web Next.js 15 + Tailwind v4 con landing "Hello CRM Transporte"                     | Agente      | Hecha     | 2026-08-25 | shadcn/ui diferido a cuando haya UI real de dashboard                                           |
-| TASK-0004 | ESLint 9 + Prettier (JS) y ruff (API) + Husky/lint-staged unificado                 | Agente      | Hecha     | 2026-08-25 | Un solo hook pre-commit para ambos stacks                                                       |
-| TASK-0005 | Tests: integración API (`/health`) y E2E Playwright de la landing                   | Agente      | Hecha     | 2026-08-25 | API: pytest + TestClient (sin ejecutar, falta Python — TASK-0008). Web: e2e verificado en verde |
-| TASK-0006 | Workflow CI GitHub Actions: JS (format→lint→build→test→e2e) + API (ruff+pytest)     | Agente      | Hecha     | 2026-08-25 | `.github/workflows/ci.yml`; sin ejecutar todavía (no hay remoto configurado)                    |
-| TASK-0007 | Docker Compose (Postgres 16, Redis 7, Mailpit)                                      | Agente      | Hecha     | 2026-08-25 | Sin verificar en máquina real (Docker no instalado aquí)                                        |
-| TASK-0008 | Instalar Python 3.12+ y uv en la máquina de desarrollo                              | Usuario     | Pendiente | —          | Bloquea verificar TASK-0002/0005 (API) en runtime                                               |
-| TASK-0009 | Verificar docker compose (Postgres/Redis/Mailpit) en máquina real                   | Usuario     | Pendiente | —          | Requiere Docker Desktop instalado                                                               |
-| TASK-0010 | Conectar el repo a un remoto Git (GitHub u otro) y validar el workflow de PR        | Usuario     | Pendiente | —          | Sin esto, RULE-002/RULE-003 (ramas/PR) no se pueden ejercitar de verdad                         |
+| ID        | Título                                                                              | Responsable | Estado    | Cierre     | Refs / Notas                                                                                                           |
+| --------- | ----------------------------------------------------------------------------------- | ----------- | --------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| TASK-0001 | Estructura monorepo (pnpm+turbo para JS, uv/pyproject para Python) + docs iniciales | Agente      | Hecha     | 2026-08-25 | Commit inicial; incluye ARCHITECTURE/DATA_MODEL/ROADMAP/AGENTS/CONTRIBUTING/SETUP                                      |
+| TASK-0002 | API FastAPI mínima: GET /health, CORS, puerto por API_PORT, sin DB                  | Agente      | Hecha     | 2026-08-25 | SQLAlchemy diferido a Fase 1; sin verificar en runtime (falta Python/uv, TASK-0008)                                    |
+| TASK-0003 | Web Next.js 15 + Tailwind v4 con landing "Hello CRM Transporte"                     | Agente      | Hecha     | 2026-08-25 | shadcn/ui diferido a cuando haya UI real de dashboard                                                                  |
+| TASK-0004 | ESLint 9 + Prettier (JS) y ruff (API) + Husky/lint-staged unificado                 | Agente      | Hecha     | 2026-08-25 | Un solo hook pre-commit para ambos stacks                                                                              |
+| TASK-0005 | Tests: integración API (`/health`) y E2E Playwright de la landing                   | Agente      | Hecha     | 2026-08-25 | API: pytest + TestClient (sin ejecutar, falta Python — TASK-0008). Web: e2e verificado en verde                        |
+| TASK-0006 | Workflow CI GitHub Actions: JS (format→lint→build→test→e2e) + API (ruff+pytest)     | Agente      | Hecha     | 2026-08-25 | `.github/workflows/ci.yml`; sin ejecutar todavía (no hay remoto configurado)                                           |
+| TASK-0007 | Docker Compose (Postgres 16, Redis 7, Mailpit)                                      | Agente      | Hecha     | 2026-08-25 | Sin verificar en máquina real (Docker no instalado aquí)                                                               |
+| TASK-0008 | Instalar Python 3.12+ y uv en la máquina de desarrollo                              | Agente      | Hecha     | 2026-08-25 | Python 3.12.10 + uv 0.12.5 via winget/pip, con permiso explícito del usuario. TASK-0002/0005 ya verificados en runtime |
+| TASK-0009 | Verificar docker compose (Postgres/Redis/Mailpit) en máquina real                   | Usuario     | Pendiente | —          | Requiere Docker Desktop instalado                                                                                      |
+| TASK-0010 | Conectar el repo a un remoto Git (GitHub u otro) y validar el workflow de PR        | Usuario     | Pendiente | —          | Sin esto, RULE-002/RULE-003 (ramas/PR) no se pueden ejercitar de verdad                                                |
 
 ## Auditoría inicial (2026-08-25) — hallazgos que informaron el diseño de Fase 0
 
@@ -44,9 +44,18 @@ aquí para que no se pierdan de vista al planificar Fase 1/2.
 | TASK-0014 | Workflow de cola de revisión para documentos con `confidence` baja                   | Esteban     | Pendiente | —      | Fase 3; hoy el campo existe en el modelo pero no hay vista/flujo asociado |
 | TASK-0015 | Definir mecanismo de notificación a familias (nueva factura, recordatorio)           | Esteban     | Pendiente | —      | Fase 4; el spec original era dashboard "pull-only"                        |
 
-## Fase 1 y siguientes — Pendiente de desglosar
+## Fase 1 — Identidad, familias y alumnos
 
-Las tareas de Fase 1 (identidad/familias/alumnos) en adelante se dan de alta
-en este ledger conforme se planifiquen, con ids a partir de TASK-0016,
-siguiendo el protocolo de arriba. El detalle narrativo de cada fase vive en
+| ID        | Título                                                                         | Responsable    | Estado    | Cierre     | Refs / Notas                                                                                                                                                                                               |
+| --------- | ------------------------------------------------------------------------------ | -------------- | --------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0016 | Modelos SQLAlchemy (User/Family/Student/Contract) + migración inicial Alembic  | Agente         | Hecha     | 2026-08-25 | Enums no nativos con `values_callable` (valores en minúscula, no el nombre); migración generada y verificada (upgrade+downgrade) contra SQLite temporal — falta aplicarla contra Postgres real (TASK-0009) |
+| TASK-0017 | Auth: hash de contraseña (bcrypt) + JWT (pyjwt) + `POST /auth/login`           | Agente         | Hecha     | 2026-08-25 | 12 tests (unit + integración con SQLite in-memory vía `TestClient`); sin endpoint de registro público — los `User` los crea `staff`/`admin` (TASK-0018)                                                    |
+| TASK-0018 | Dependencia `familyId` (RULE-005) + CRUD interno de familias/alumnos/contratos | Esteban/Agente | Pendiente | —          | Bloqueante antes de construir cualquier dato de facturación real                                                                                                                                           |
+| TASK-0019 | Frontend: login + layout autenticado (padre vs. staff)                         | Esteban/Agente | Pendiente | —          | Puede avanzar con mocks en paralelo a TASK-0018                                                                                                                                                            |
+
+## Fase 2 y siguientes — Pendiente de desglosar
+
+Las tareas de Fase 2 (ingesta de correo) en adelante se dan de alta en este
+ledger conforme se planifiquen, con ids a partir de TASK-0020, siguiendo el
+protocolo de arriba. El detalle narrativo de cada fase vive en
 [docs/ROADMAP.md](docs/ROADMAP.md).

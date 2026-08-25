@@ -42,13 +42,14 @@ El trabajo vivo está en [ISSUES.md](../ISSUES.md).
 
 ## Estado por componente
 
-| Carpeta       | Contenido                                                         | Estado       |
-| ------------- | ----------------------------------------------------------------- | ------------ |
-| `apps/api`    | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env  | ✅ Operativo |
-| `apps/web`    | Next.js 15 App Router, Tailwind v4 CSS-first, landing estática    | ✅ Operativo |
-| Persistencia  | SQLAlchemy + Alembic; modelos base                                | 🔧 Fase 1    |
-| Cola          | Redis + Celery/RQ; ingesta de Gmail                               | 🔧 Fase 2    |
-| CI (`ci.yml`) | JS: format → lint → build → test → e2e. API: format → lint → test | ✅ Operativo |
+| Carpeta       | Contenido                                                                                                                                                  | Estado       |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| `apps/api`    | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                           | ✅ Operativo |
+| `apps/web`    | Next.js 15 App Router, Tailwind v4 CSS-first, landing estática                                                                                             | ✅ Operativo |
+| Persistencia  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite; falta aplicarla contra Postgres real, TASK-0009) | 🔧 Fase 1    |
+| Auth          | JWT (pyjwt) + bcrypt; `POST /auth/login`. Falta guard `familyId` y CRUD (TASK-0018)                                                                        | 🔧 Fase 1    |
+| Cola          | Redis + Celery/RQ; ingesta de Gmail                                                                                                                        | 🔧 Fase 2    |
+| CI (`ci.yml`) | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                          | ✅ Operativo |
 
 ---
 

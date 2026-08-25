@@ -7,6 +7,12 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "pydantic-settings>=2.6.0",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14.0",
+    "psycopg[binary]>=3.2.0",
+    "pyjwt>=2.9.0",
+    "bcrypt>=4.2.0",
+    "email-validator>=2.2.0",
 ]
 
 [dependency-groups]
@@ -22,9 +28,12 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+# B008: Depends(...) en defaults es el patron idiomatico de FastAPI, no un bug.
+ignore = ["B008"]
 
 [build-system]
 requires = ["hatchling"]
