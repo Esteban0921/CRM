@@ -4,9 +4,11 @@ from models.document import Document
 from models.email import Email
 from models.family import Family
 from models.family_invoice import FamilyInvoice
+from models.note import Note
 from models.student import Student
 from models.supplier import Supplier
 from models.supplier_invoice import SupplierInvoice
+from models.task import Task
 from models.user import User
 
 __all__ = [
@@ -16,8 +18,10 @@ __all__ = [
     "Email",
     "Family",
     "FamilyInvoice",
+    "Note",
     "Student",
     "Supplier",
     "SupplierInvoice",
+    "Task",
     "User",
 ]
