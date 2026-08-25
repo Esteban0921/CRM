@@ -11,6 +11,9 @@ from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
 from models.student import Student
 from models.supplier import Supplier
 from models.supplier_invoice import SupplierInvoice
+from models.user import User, UserRole
+from notifications.email_sender import NoOpEmailSender
+from security import hash_password
 
 FACTURA_TEXTO = """
 FACTURA
@@ -168,6 +171,44 @@ def test_matching_student_name_auto_links_but_still_needs_review(db_session, tmp
     invoice = db_session.query(FamilyInvoice).one()
     assert invoice.family_id == family.id
     assert invoice.status == FamilyInvoiceStatus.PENDING_REVIEW  # match no salta la revision
+
+
+def test_matched_invoice_notifies_the_familys_parents(db_session, tmp_path):
+    family = Family(name="Familia Garcia")
+    db_session.add(family)
+    db_session.commit()
+    db_session.add(Student(family_id=family.id, name="Ana Garcia Perez"))
+    db_session.add(
+        User(
+            family_id=family.id,
+            email="padre@example.com",
+            password_hash=hash_password("x"),
+            name="Padre",
+            role=UserRole.PARENT,
+        )
+    )
+    db_session.commit()
+    texto_con_alumno = FACTURA_TEXTO.decode() + "\nAlumno: Ana Garcia Perez\n"
+    client = FakeGmailClient(
+        [
+            RawEmail(
+                gmail_id="msg-7",
+                attachments=[
+                    RawAttachment(
+                        filename="factura.pdf",
+                        mime_type="application/pdf",
+                        content=texto_con_alumno.encode(),
+                    )
+                ],
+            )
+        ]
+    )
+    sender = NoOpEmailSender()
+
+    ingest_new_emails(client, db_session, storage_dir=tmp_path, sender=sender)
+
+    assert len(sender.sent) == 1
+    assert sender.sent[0].to == "padre@example.com"
 
 
 def test_zip_bomb_marks_email_as_failed_not_processed(db_session, tmp_path):

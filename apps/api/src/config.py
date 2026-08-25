@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://crm:crm@localhost:5432/crm_transporte"
     jwt_secret: str = "dev-secret-change-me-in-every-real-environment"
     jwt_expires_minutes: int = 15
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    smtp_from: str = "no-reply@crm-transporte.local"
 
 
 settings = Settings()
