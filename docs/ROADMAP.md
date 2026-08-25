@@ -76,14 +76,15 @@ a propósito).
 
 ---
 
-## Fase 3 – Dashboards ✅ API, ⏳ frontend
+## Fase 3 – Dashboards ✅ API completa, 🔧 frontend arrancado
 
 **Objetivo:** padres consultando sus facturas; staff revisando y corrigiendo.
 
 - ✅ API: `family-invoices`/`supplier-invoices` (listado filtrable, detalle, corrección con audit trail).
 - ✅ API: notas internas (`Note`) y tareas/recordatorios (`Task`) para staff.
 - ✅ API: exportación de datos de una familia (`GET /families/{id}/export`, RGPD).
-- ⏳ Frontend: pantallas reales de listado/detalle de facturas (hoy `/dashboard` es solo el shell de login, TASK-0019); notas y tareas sin UI todavía.
+- ✅ Frontend: `/dashboard` (padre) lista sus `FamilyInvoice` reales; `/dashboard/invoices` (staff) es la cola de revisión, filtra `pending_review` y marca `sent` (TASK-0035).
+- ⏳ Frontend: CRUD de familias/alumnos/contratos, notas, tareas y el botón de exportar/anonimizar (TASK-0036/0037/0038) — la API ya existe para las cuatro cosas, falta la pantalla.
 - ⏳ Exportación CSV/Excel de la vista filtrada (la exportación RGPD ya existe pero es JSON, no pensada para uso administrativo masivo).
 
 ---

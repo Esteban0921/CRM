@@ -17,6 +17,26 @@ test('un padre inicia sesión y ve su dashboard', async ({ page }) => {
       },
     });
   });
+  await page.route('**/family-invoices', async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: '33333333-3333-3333-3333-333333333333',
+          document_id: '44444444-4444-4444-4444-444444444444',
+          family_id: '22222222-2222-2222-2222-222222222222',
+          student_id: null,
+          contract_id: null,
+          amount: '45.00',
+          currency: 'EUR',
+          issue_date: '2026-09-01',
+          due_date: null,
+          status: 'sent',
+          extracted_data: null,
+          confidence: 0.9,
+        },
+      ],
+    });
+  });
 
   await page.goto('/login');
   await page.getByLabel('Email').fill('padre@example.com');
@@ -25,7 +45,8 @@ test('un padre inicia sesión y ve su dashboard', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/dashboard/);
   await expect(page.getByRole('heading', { name: 'Hola, Ana Padre' })).toBeVisible();
-  await expect(page.getByText('Mis facturas')).toBeVisible();
+  await expect(page.getByText('Facturas de tu familia')).toBeVisible();
+  await expect(page.getByText('45.00 EUR')).toBeVisible();
 });
 
 test('un fallo de login muestra el mensaje de error', async ({ page }) => {

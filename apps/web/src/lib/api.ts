@@ -53,3 +53,42 @@ export function getMe(token: string): Promise<MeResponse> {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export type FamilyInvoiceStatus = 'pending_review' | 'sent' | 'paid' | 'overdue';
+
+export interface FamilyInvoice {
+  id: string;
+  document_id: string;
+  family_id: string | null;
+  student_id: string | null;
+  contract_id: string | null;
+  amount: string | null;
+  currency: string;
+  issue_date: string | null;
+  due_date: string | null;
+  status: FamilyInvoiceStatus;
+  extracted_data: Record<string, unknown> | null;
+  confidence: number | null;
+}
+
+export function getFamilyInvoices(
+  token: string,
+  status?: FamilyInvoiceStatus,
+): Promise<FamilyInvoice[]> {
+  const query = status ? `?status=${status}` : '';
+  return request<FamilyInvoice[]>(`/family-invoices${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function updateFamilyInvoice(
+  token: string,
+  invoiceId: string,
+  payload: Partial<Pick<FamilyInvoice, 'status' | 'family_id'>>,
+): Promise<FamilyInvoice> {
+  return request<FamilyInvoice>(`/family-invoices/${invoiceId}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}

@@ -131,8 +131,17 @@ desde TASK-0016, cadena completa upgrade/downgrade verificada contra SQLite.
 tres hallazgos de la auditoría comparativa (notas, audit trail extendido,
 tareas) están construidos, no solo anotados.
 
+## Fase 3 (frontend) — arrancada
+
+| ID        | Título                                                                | Responsable | Estado    | Cierre     | Refs / Notas                                                                                                                                   |
+| --------- | --------------------------------------------------------------------- | ----------- | --------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0035 | Frontend: listado real de facturas (padre) + cola de revisión (staff) | Agente      | Hecha     | 2026-08-25 | `/dashboard` (padre, `GET /family-invoices`) y `/dashboard/invoices` (staff, filtra `pending_review`, marca `sent`). 2 e2e nuevos (6 en total) |
+| TASK-0036 | Frontend: CRUD de familias/alumnos/contratos (staff)                  | —           | Pendiente | —          | Hoy solo existe vía API/Swagger (`/docs`); sin pantallas                                                                                       |
+| TASK-0037 | Frontend: notas y tareas (staff)                                      | —           | Pendiente | —          | API lista (TASK-0025/0027), sin pantallas                                                                                                      |
+| TASK-0038 | Frontend: exportación/anonimización RGPD (botón en ficha de familia)  | —           | Pendiente | —          | API lista (TASK-0012), sin UI                                                                                                                  |
+
 ## Fase 3 y siguientes — Pendiente de desglosar
 
 Se dan de alta en este ledger conforme se planifiquen, con ids a partir de
-TASK-0035, siguiendo el protocolo de arriba. El detalle narrativo de cada
+TASK-0039, siguiendo el protocolo de arriba. El detalle narrativo de cada
 fase vive en [docs/ROADMAP.md](docs/ROADMAP.md).

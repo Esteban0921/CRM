@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 
 function DashboardShell({ children }: { children: ReactNode }) {
@@ -23,12 +24,13 @@ function DashboardShell({ children }: { children: ReactNode }) {
         <nav className="flex flex-col gap-2 text-sm">
           {isStaff ? (
             <>
+              <Link href="/dashboard/invoices">Cola de revisión</Link>
               <span>Familias</span>
               <span>Alumnos</span>
               <span>Facturas de proveedor</span>
             </>
           ) : (
-            <span>Mis facturas</span>
+            <Link href="/dashboard">Mis facturas</Link>
           )}
         </nav>
         <button onClick={logout} className="mt-8 text-sm text-neutral-500 underline">
