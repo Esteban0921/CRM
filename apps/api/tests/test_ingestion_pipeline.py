@@ -6,7 +6,9 @@ from ingestion.gmail_client import RawAttachment, RawEmail
 from ingestion.pipeline import ingest_new_emails
 from models.document import Document, DocumentType
 from models.email import Email, EmailProcessingStatus
-from models.family_invoice import FamilyInvoice
+from models.family import Family
+from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
+from models.student import Student
 from models.supplier import Supplier
 from models.supplier_invoice import SupplierInvoice
 
@@ -137,6 +139,35 @@ def test_known_supplier_address_creates_supplier_invoice(db_session, tmp_path):
         == 1
     )
     assert db_session.query(FamilyInvoice).count() == 0
+
+
+def test_matching_student_name_auto_links_but_still_needs_review(db_session, tmp_path):
+    family = Family(name="Familia Garcia")
+    db_session.add(family)
+    db_session.commit()
+    db_session.add(Student(family_id=family.id, name="Ana Garcia Perez"))
+    db_session.commit()
+    texto_con_alumno = FACTURA_TEXTO.decode() + "\nAlumno: Ana Garcia Perez\n"
+    client = FakeGmailClient(
+        [
+            RawEmail(
+                gmail_id="msg-6",
+                attachments=[
+                    RawAttachment(
+                        filename="factura.pdf",
+                        mime_type="application/pdf",
+                        content=texto_con_alumno.encode(),
+                    )
+                ],
+            )
+        ]
+    )
+
+    ingest_new_emails(client, db_session, storage_dir=tmp_path)
+
+    invoice = db_session.query(FamilyInvoice).one()
+    assert invoice.family_id == family.id
+    assert invoice.status == FamilyInvoiceStatus.PENDING_REVIEW  # match no salta la revision
 
 
 def test_zip_bomb_marks_email_as_failed_not_processed(db_session, tmp_path):

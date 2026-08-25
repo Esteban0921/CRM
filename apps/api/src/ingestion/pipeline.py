@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ingestion.classification import classify_document
 from ingestion.extraction import extract_fields
 from ingestion.gmail_client import GmailClient, RawAttachment
+from ingestion.matching import match_student_by_name_in_text
 from ingestion.safe_zip import UnsafeArchiveError, safe_extract_zip
 from ingestion.scanning import AttachmentScanner, NoOpScanner
 from models.document import Document, DocumentType
@@ -216,10 +217,12 @@ def _store_and_classify(
         # (pypdf/pdfplumber, spec original) se conecta con muestras reales.
         text = content.decode("utf-8", errors="ignore")
         fields = extract_fields(text)
-        _create_invoice_record(db, document, doc_type, fields)
+        _create_invoice_record(db, document, doc_type, fields, text)
 
 
-def _create_invoice_record(db: Session, document: Document, doc_type: DocumentType, fields) -> None:
+def _create_invoice_record(
+    db: Session, document: Document, doc_type: DocumentType, fields, text: str
+) -> None:
     extracted_data = {
         "invoice_number": fields.invoice_number,
         "issue_date": fields.issue_date,
@@ -227,12 +230,17 @@ def _create_invoice_record(db: Session, document: Document, doc_type: DocumentTy
         "tax_id": fields.tax_id,
     }
     if doc_type == DocumentType.FAMILY_INVOICE:
-        # family_id queda sin enlazar (pending_review): la ingesta automatica
-        # no sabe todavia a que familia pertenece: lo asigna staff, o una
-        # tarea futura de matching automatico por NIF/nombre.
+        # TASK-0030: intenta enlazar automaticamente por nombre de alumno.
+        # Aunque haya match, status sigue pending_review — el auto-match
+        # ahorra trabajo a staff, no sustituye la revision humana (RULE-015).
+        family_id, student_id = match_student_by_name_in_text(db, text)
         db.add(
             FamilyInvoice(
-                document_id=document.id, extracted_data=extracted_data, confidence=fields.confidence
+                document_id=document.id,
+                family_id=family_id,
+                student_id=student_id,
+                extracted_data=extracted_data,
+                confidence=fields.confidence,
             )
         )
     else:

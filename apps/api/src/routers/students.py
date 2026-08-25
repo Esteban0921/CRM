@@ -3,8 +3,10 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from audit import record_field_changes
 from db import get_db
 from dependencies import ensure_family_access, get_current_user, require_role
+from models.audit_log import AuditedEntityType
 from models.student import Student
 from models.user import User, UserRole
 from schemas.student import StudentCreate, StudentRead, StudentUpdate
@@ -61,13 +63,23 @@ def update_student(
     student_id: uuid.UUID,
     payload: StudentUpdate,
     db: Session = Depends(get_db),
-    _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+    staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
 ) -> Student:
     student = db.get(Student, student_id)
     if student is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Alumno no encontrado")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    before = {field: getattr(student, field) for field in changes}
+    for field, value in changes.items():
         setattr(student, field, value)
+    record_field_changes(
+        db,
+        entity_type=AuditedEntityType.STUDENT,
+        entity_id=student.id,
+        editor_id=staff.id,
+        before=before,
+        after=changes,
+    )
     db.commit()
     db.refresh(student)
     return student

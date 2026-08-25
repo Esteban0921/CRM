@@ -3,8 +3,10 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from audit import record_field_changes
 from db import get_db
 from dependencies import ensure_family_access, get_current_user, require_role
+from models.audit_log import AuditedEntityType
 from models.contract import Contract
 from models.student import Student
 from models.user import User, UserRole
@@ -72,13 +74,23 @@ def update_contract(
     contract_id: uuid.UUID,
     payload: ContractUpdate,
     db: Session = Depends(get_db),
-    _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+    staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
 ) -> Contract:
     contract = db.get(Contract, contract_id)
     if contract is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Contrato no encontrado")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    before = {field: getattr(contract, field) for field in changes}
+    for field, value in changes.items():
         setattr(contract, field, value)
+    record_field_changes(
+        db,
+        entity_type=AuditedEntityType.CONTRACT,
+        entity_id=contract.id,
+        editor_id=staff.id,
+        before=before,
+        after=changes,
+    )
     db.commit()
     db.refresh(contract)
     return contract

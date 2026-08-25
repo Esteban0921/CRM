@@ -12,6 +12,9 @@ from models.mixins import IdMixin, utcnow
 
 
 class AuditedEntityType(enum.StrEnum):
+    FAMILY = "family"
+    STUDENT = "student"
+    CONTRACT = "contract"
     FAMILY_INVOICE = "family_invoice"
     SUPPLIER_INVOICE = "supplier_invoice"
 

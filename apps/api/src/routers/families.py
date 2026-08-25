@@ -3,8 +3,10 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from audit import record_field_changes
 from db import get_db
 from dependencies import ensure_family_access, get_current_user, require_role
+from models.audit_log import AuditedEntityType
 from models.family import Family
 from models.user import User, UserRole
 from schemas.family import FamilyCreate, FamilyRead, FamilyUpdate
@@ -51,13 +53,23 @@ def update_family(
     family_id: uuid.UUID,
     payload: FamilyUpdate,
     db: Session = Depends(get_db),
-    _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+    staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
 ) -> Family:
     family = db.get(Family, family_id)
     if family is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Familia no encontrada")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    before = {field: getattr(family, field) for field in changes}
+    for field, value in changes.items():
         setattr(family, field, value)
+    record_field_changes(
+        db,
+        entity_type=AuditedEntityType.FAMILY,
+        entity_id=family.id,
+        editor_id=staff.id,
+        before=before,
+        after=changes,
+    )
     db.commit()
     db.refresh(family)
     return family
