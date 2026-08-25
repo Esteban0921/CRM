@@ -36,13 +36,13 @@ Estos puntos surgieron al auditar `docs/SPEC_ORIGINAL.md` antes de escribir
 código y ya están reflejados en `docs/ARCHITECTURE.md` / `AGENTS.md`. Se listan
 aquí para que no se pierdan de vista al planificar Fase 1/2.
 
-| ID        | Título                                                                               | Responsable | Estado    | Cierre     | Refs / Notas                                                                      |
-| --------- | ------------------------------------------------------------------------------------ | ----------- | --------- | ---------- | --------------------------------------------------------------------------------- |
-| TASK-0011 | Diseñar invariante de acceso por `familyId` antes de construir el dashboard          | Agente      | Hecha     | 2026-08-25 | Superada por la implementación real en TASK-0018 (`ensure_family_access` + tests) |
-| TASK-0012 | Decidir política RGPD de datos de `Student` (retención, derecho de acceso/supresión) | Esteban     | Pendiente | —          | RULE-015; antes de Fase 3 (dashboard con datos reales)                            |
-| TASK-0013 | Escaneo antivirus + límites zip-bomb en la ingesta de adjuntos                       | Esteban     | Pendiente | —          | RULE-016; Fase 2, bloqueante antes de procesar adjuntos reales                    |
-| TASK-0014 | Workflow de cola de revisión para documentos con `confidence` baja                   | Esteban     | Pendiente | —          | Fase 3; hoy el campo existe en el modelo pero no hay vista/flujo asociado         |
-| TASK-0015 | Definir mecanismo de notificación a familias (nueva factura, recordatorio)           | Esteban     | Pendiente | —          | Fase 4; el spec original era dashboard "pull-only"                                |
+| ID        | Título                                                                       | Responsable    | Estado                              | Cierre     | Refs / Notas                                                                                                                                                                                                                                                                                                              |
+| --------- | ---------------------------------------------------------------------------- | -------------- | ----------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0011 | Diseñar invariante de acceso por `familyId` antes de construir el dashboard  | Agente         | Hecha                               | 2026-08-25 | Superada por la implementación real en TASK-0018 (`ensure_family_access` + tests)                                                                                                                                                                                                                                         |
+| TASK-0012 | Política RGPD de datos de `Student` (retención, derecho de acceso/supresión) | Agente/Esteban | Mecanismo hecho, política pendiente | 2026-08-25 | `GET /families/{id}/export` + `POST /families/{id}/anonymize` construidos y probados (anonimiza identificadores, conserva facturación por obligación contable). **Falta decidir**: cuándo se dispara de oficio (¿tras cuántos años de inactividad?), base legal exacta — eso sigue siendo decisión de Esteban, no técnica |
+| TASK-0013 | Escaneo antivirus + límites zip-bomb en la ingesta de adjuntos               | Agente         | Hecha                               | 2026-08-25 | Ver Fase 2                                                                                                                                                                                                                                                                                                                |
+| TASK-0014 | Workflow de cola de revisión para documentos con `confidence` baja           | Agente         | Hecha                               | 2026-08-25 | `family-invoices`/`supplier-invoices` (GET lista + detalle + PATCH), ordenados por `confidence` ascendente                                                                                                                                                                                                                |
+| TASK-0015 | Definir mecanismo de notificación a familias (nueva factura, recordatorio)   | Agente         | Hecha                               | 2026-08-25 | Ver Fase 2                                                                                                                                                                                                                                                                                                                |
 
 ## Fase 1 — Identidad, familias y alumnos
 
@@ -93,34 +93,46 @@ generaron:
   ficheros) implementado en TASK-0013; no se añadió como dependencia porque
   la lógica necesaria es ~30 líneas con la librería estándar `zipfile`.
 - **CRMs OSS comparables (Krayin, NextCRM, Atomic CRM, open-crm)** tienen de
-  serie tres cosas que a nosotros nos faltan — quedan registradas como tareas
-  pendientes, no implementadas todavía en esta sesión:
+  serie tres cosas que a nosotros nos faltaban — las tres construidas y
+  probadas en esta misma sesión:
 
-| ID        | Título                                                                                         | Responsable | Estado    | Cierre | Refs / Notas                                                                                                    |
-| --------- | ---------------------------------------------------------------------------------------------- | ----------- | --------- | ------ | --------------------------------------------------------------------------------------------------------------- |
-| TASK-0025 | Notas internas de staff sobre `Family`/`Student`                                               | —           | Pendiente | —      | Hallazgo: Krayin/NextCRM/Atomic CRM tienen notas libres por contacto (ej. "recoge sola los viernes", alergias)  |
-| TASK-0026 | Historial de cambios (audit trail) extendido a `Family`/`Student`/`Contract`, no solo facturas | —           | Pendiente | —      | Hallazgo: NextCRM tiene "full field-level change trail on all CRM entities"; hoy `AuditLog` solo cubre facturas |
-| TASK-0027 | Sistema de tareas/recordatorios de staff vinculados a una familia                              | —           | Pendiente | —      | Hallazgo: patrón común en CRMs comparables (seguimiento de impago, contactar familia, etc.)                     |
+| ID        | Título                                                                                         | Responsable | Estado | Cierre     | Refs / Notas                                                                                                |
+| --------- | ---------------------------------------------------------------------------------------------- | ----------- | ------ | ---------- | ----------------------------------------------------------------------------------------------------------- |
+| TASK-0025 | Notas internas de staff sobre `Family`/`Student`                                               | Agente      | Hecha  | 2026-08-25 | `Note`: alta/listado/borrado, nunca visible para `parent`                                                   |
+| TASK-0026 | Historial de cambios (audit trail) extendido a `Family`/`Student`/`Contract`, no solo facturas | Agente      | Hecha  | 2026-08-25 | `audit.record_field_changes()` reutilizado en families/students/contracts/family-invoices/supplier-invoices |
+| TASK-0027 | Sistema de tareas/recordatorios de staff vinculados a una familia                              | Agente      | Hecha  | 2026-08-25 | `Task`: CRUD completo, status pending/done/cancelled, ordenado por `due_date`                               |
 
 - **KillBill** (motor de facturación recurrente) se consideró y se descarta
   explícitamente: no encaja con la decisión ya tomada de que las facturas
   llegan por Gmail (no las genera el propio CRM), así que un motor de
   suscripciones sería trabajo no pedido — no se registra como tarea.
 
-## Seguir de "simulado" a "real" — pendiente, sin bloquear el resto
+## Seguir de "simulado" a "real"
 
 Todo lo de abajo es sustituir una implementación por otra detrás del mismo
 contrato/protocolo; no requiere rediseño, solo el recurso externo indicado.
+TASK-0030 ya no depende de nada externo — se hizo esta sesión; el resto sigue
+bloqueado por credenciales/Docker.
 
-| ID        | Título                                                                     | Responsable | Estado    | Cierre | Refs / Notas                                                                                                                                                |
-| --------- | -------------------------------------------------------------------------- | ----------- | --------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TASK-0030 | Matching automático `FamilyInvoice` → `Family` (por NIF/nombre/referencia) | —           | Pendiente | —      | Hoy toda `FamilyInvoice` nace sin enlazar (`family_id=None`, `pending_review`); alguien de staff la asigna a mano. Ver TASK-0014 (cola de revisión, Fase 3) |
-| TASK-0031 | Extracción real de texto de PDF (pypdf/pdfplumber, spec original)          | —           | Bloqueada | —      | `extraction.py` opera sobre texto ya extraído (simulado); conectar el backend real necesita muestras reales de facturas (sección 12 SPEC_ORIGINAL.md)       |
-| TASK-0032 | Cliente Gmail real (OAuth) implementando el protocolo `GmailClient`        | —           | Bloqueada | —      | Requiere credenciales OAuth + cuenta de pruebas (decisión pendiente del usuario, pospuesta a propósito el 2026-08-25)                                       |
-| TASK-0033 | `ClamdScanner` real: daemon `clamd` + `pip install clamd`                  | —           | Pendiente | —      | Requiere Docker (TASK-0009); el código ya existe, sin verificar                                                                                             |
+| ID        | Título                                                                            | Responsable | Estado    | Cierre     | Refs / Notas                                                                                                                                                                                                 |
+| --------- | --------------------------------------------------------------------------------- | ----------- | --------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TASK-0030 | Matching automático `FamilyInvoice` → `Family` (por nombre de alumno en el texto) | Agente      | Hecha     | 2026-08-25 | Exactamente una coincidencia entre alumnos activos → enlaza; 0 o >1 (ambiguo) → sigue sin enlazar. Status sigue `pending_review` aunque haya match: ahorra trabajo a staff, no sustituye revisión (RULE-015) |
+| TASK-0031 | Extracción real de texto de PDF (pypdf/pdfplumber, spec original)                 | —           | Bloqueada | —          | `extraction.py` opera sobre texto ya extraído (simulado); conectar el backend real necesita muestras reales de facturas (sección 12 SPEC_ORIGINAL.md)                                                        |
+| TASK-0032 | Cliente Gmail real (OAuth) implementando el protocolo `GmailClient`               | —           | Bloqueada | —          | Requiere credenciales OAuth + cuenta de pruebas (decisión pendiente del usuario, pospuesta a propósito el 2026-08-25)                                                                                        |
+| TASK-0033 | `ClamdScanner` real: daemon `clamd` + `pip install clamd`                         | —           | Pendiente | —          | Requiere Docker (TASK-0009); el código ya existe, sin verificar                                                                                                                                              |
+| TASK-0034 | `SmtpEmailSender` real contra Mailpit                                             | —           | Pendiente | —          | Requiere Docker (TASK-0009); probado con `smtplib.SMTP` mockeado, no contra un servidor real                                                                                                                 |
+
+## Resumen de esta sesión extendida (2026-08-25)
+
+Modelos `Note`/`Task` + migración (`506954d2c10f`), 6 migraciones en total
+desde TASK-0016, cadena completa upgrade/downgrade verificada contra SQLite.
+**85 tests de API** + 4 e2e de web, todos en verde. Con esto, Fase 2 del
+[ROADMAP.md](docs/ROADMAP.md) queda completa en su versión simulada, y los
+tres hallazgos de la auditoría comparativa (notas, audit trail extendido,
+tareas) están construidos, no solo anotados.
 
 ## Fase 3 y siguientes — Pendiente de desglosar
 
 Se dan de alta en este ledger conforme se planifiquen, con ids a partir de
-TASK-0034, siguiendo el protocolo de arriba. El detalle narrativo de cada
+TASK-0035, siguiendo el protocolo de arriba. El detalle narrativo de cada
 fase vive en [docs/ROADMAP.md](docs/ROADMAP.md).

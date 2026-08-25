@@ -50,14 +50,14 @@ del proyecto (equivalente a RULE-005).
 
 ---
 
-## Fase 2 – Ingesta de correo y extracción ✅ simulada, ⏳ real
+## Fase 2 – Ingesta de correo y extracción ✅ completa (simulada)
 
 **Objetivo:** el pipeline descrito en [SPEC_ORIGINAL.md](SPEC_ORIGINAL.md)
 funcionando de punta a punta, escribiendo en `FamilyInvoice` / `SupplierInvoice`.
 
 Decisión del usuario (2026-08-25): simular credenciales de Gmail en vez de
 esperar a las reales, para poder construir y probar el pipeline entero ya.
-Todo lo de abajo está construido y con 50 tests pasando contra un
+Todo lo de abajo está construido y con 85 tests pasando contra un
 `FakeGmailClient`; pasar a Gmail real es sustituir una implementación detrás
 del mismo protocolo (`GmailClient`), no rediseñar nada (TASK-0032, pospuesta
 a propósito).
@@ -67,29 +67,33 @@ a propósito).
 - ✅ Clasificación por reglas + extracción de campos por plantilla, estilo `invoice2data` (TASK-0023).
 - ✅ Límites zip-bomb (ratio/tamaño/nº ficheros) + interfaz de escaneo, `NoOpScanner` en dev (TASK-0013).
 - ✅ Distinción factura-a-familia vs. factura-de-proveedor (por email de `Supplier` conocido).
+- ✅ Matching automático de `FamilyInvoice` → `Family` por nombre de alumno (TASK-0030) — ambiguo o sin match queda para revisión manual.
+- ✅ Cola de revisión: `family-invoices`/`supplier-invoices`, ordenada por `confidence` (TASK-0014).
+- ✅ Notificación por email a la familia cuando se enlaza una factura nueva (TASK-0015).
 - ⏳ Extracción real de texto de PDF — pypdf/pdfplumber (TASK-0031, necesita muestras reales).
-- ⏳ Matching automático de una `FamilyInvoice` a su `Family` — hoy queda `pending_review` sin enlazar (TASK-0030).
 - ⏳ `ClamdScanner` real — necesita Docker (TASK-0033).
+- ⏳ `SmtpEmailSender` real contra Mailpit — necesita Docker (TASK-0034).
 
 ---
 
-## Fase 3 – Dashboards
+## Fase 3 – Dashboards ✅ API, ⏳ frontend
 
 **Objetivo:** padres consultando sus facturas; staff revisando y corrigiendo.
 
-- Dashboard padre: listado/detalle de `FamilyInvoice` propias, descarga, estado.
-- Panel staff: cola de revisión por confianza baja, corrección manual
-  (con `AuditLog`), gestión de `SupplierInvoice`.
-- Exportación CSV/Excel de la vista filtrada.
+- ✅ API: `family-invoices`/`supplier-invoices` (listado filtrable, detalle, corrección con audit trail).
+- ✅ API: notas internas (`Note`) y tareas/recordatorios (`Task`) para staff.
+- ✅ API: exportación de datos de una familia (`GET /families/{id}/export`, RGPD).
+- ⏳ Frontend: pantallas reales de listado/detalle de facturas (hoy `/dashboard` es solo el shell de login, TASK-0019); notas y tareas sin UI todavía.
+- ⏳ Exportación CSV/Excel de la vista filtrada (la exportación RGPD ya existe pero es JSON, no pensada para uso administrativo masivo).
 
 ---
 
-## Fase 4 – Robustez y notificaciones
+## Fase 4 – Robustez y notificaciones ✅ simulada, ⏳ real
 
-- Notificación (email vía Mailpit en dev) a la familia cuando llega una factura nueva.
-- Recordatorios de vencimiento próximo.
-- Reintentos con backoff, dead-letter para correos fallidos.
-- Retención/RGPD: política de borrado y exportación de datos personales.
+- ✅ Notificación por email a la familia cuando se enlaza una factura nueva (TASK-0015, simulada — `SmtpEmailSender` real necesita Docker, TASK-0034).
+- ✅ Retención/RGPD: mecanismo de anonimización (`POST /families/{id}/anonymize`, TASK-0012) — la política (cuándo, con qué base legal) sigue sin decidir.
+- ⏳ Recordatorios automáticos de vencimiento próximo (hoy `Task` es manual, staff lo crea a mano).
+- ⏳ Reintentos con backoff, dead-letter para correos fallidos (hoy un fallo marca `AUTO/FAILED` y para ahí).
 
 ---
 

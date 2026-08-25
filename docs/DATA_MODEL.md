@@ -167,18 +167,49 @@ otro ciclo de vida y otros campos.
 
 ### AuditLog ✅
 
-Trazabilidad de correcciones manuales sobre metadatos extraídos (no cubierto
-por el spec original). `entityId` no es FK: según `entityType` apunta a
-`family_invoices` o a `supplier_invoices`, tablas distintas.
+Trazabilidad de cambios manuales — no solo facturas (TASK-0026): también
+correcciones de `Family`/`Student`/`Contract`. `entityId` no es FK: según
+`entityType` apunta a una tabla distinta.
 
 - id
-- entityType (`family_invoice` | `supplier_invoice`)
+- entityType (`family` | `student` | `contract` | `family_invoice` | `supplier_invoice`)
 - entityId
 - fieldName
 - oldValue
 - newValue
 - editedBy (FK → User)
 - editedAt
+
+---
+
+## Notas y tareas de staff (hallazgo de auditoría comparativa 2026-08-25) ✅
+
+Ninguna de las dos la ve nunca un `parent` — son herramientas de trabajo
+interno del equipo, no un canal de comunicación con la familia.
+
+### Note (TASK-0025)
+
+- id
+- entityType (`family` | `student`)
+- entityId
+- body (texto libre)
+- createdBy (FK → User)
+- createdAt
+
+Sin `updatedAt`: una corrección es nota nueva + borrar la vieja, no una edición.
+
+### Task (TASK-0027)
+
+- id
+- familyId (FK → Family)
+- title
+- description (opcional)
+- dueDate (opcional)
+- status (`pending` | `done` | `cancelled`)
+- assignedTo (FK → User, opcional)
+- createdBy (FK → User)
+- createdAt
+- updatedAt
 
 ---
 
