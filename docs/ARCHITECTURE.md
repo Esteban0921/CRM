@@ -21,7 +21,7 @@ El trabajo vivo está en [ISSUES.md](../ISSUES.md).
 ┌─────────────────────────────▼─────────────────────────────────┐
 │                  FastAPI (apps/api) ✅                        │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐    │
-│  │ Health ✅   │  │ Auth ⏳      │  │ Familias/Alumnos ⏳ │    │
+│  │ Health ✅   │  │ Auth ✅      │  │ Familias/Alumnos ✅ │    │
 │  └─────────────┘  └──────────────┘  └────────────────────┘    │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐    │
 │  │ Ingesta ⏳  │  │ Facturación ⏳│  │ Proveedores ⏳     │    │
@@ -42,28 +42,33 @@ El trabajo vivo está en [ISSUES.md](../ISSUES.md).
 
 ## Estado por componente
 
-| Carpeta       | Contenido                                                                                                                                                  | Estado       |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `apps/api`    | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                           | ✅ Operativo |
-| `apps/web`    | Next.js 15 App Router, Tailwind v4 CSS-first, landing estática                                                                                             | ✅ Operativo |
-| Persistencia  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite; falta aplicarla contra Postgres real, TASK-0009) | 🔧 Fase 1    |
-| Auth          | JWT (pyjwt) + bcrypt; `POST /auth/login`. Falta guard `familyId` y CRUD (TASK-0018)                                                                        | 🔧 Fase 1    |
-| Cola          | Redis + Celery/RQ; ingesta de Gmail                                                                                                                        | 🔧 Fase 2    |
-| CI (`ci.yml`) | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                          | ✅ Operativo |
+| Carpeta       | Contenido                                                                                                                                                  | Estado                                 |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `apps/api`    | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                           | ✅ Operativo                           |
+| `apps/web`    | Next.js 15 App Router, Tailwind v4 CSS-first, landing estática                                                                                             | ✅ Operativo                           |
+| Persistencia  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite; falta aplicarla contra Postgres real, TASK-0009) | ✅ Operativo (Postgres real pendiente) |
+| Auth y CRUD   | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                      | ✅ Operativo                           |
+| Frontend auth | `/login` + `/dashboard` (layout distinto padre/staff), token en `localStorage`                                                                             | ✅ Operativo                           |
+| Cola          | Redis + Celery/RQ; ingesta de Gmail                                                                                                                        | 🔧 Fase 2                              |
+| CI (`ci.yml`) | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                          | ✅ Operativo                           |
 
 ---
 
 ## Invariante de acceso por familia
 
-No hay multi-tenant (una sola empresa), pero sí un invariante equivalente:
+No hay multi-tenant (una sola empresa), pero sí un invariante equivalente,
+**implementado y probado** desde TASK-0018 (`tests/test_family_scoping.py`):
 
 - Un `User` con `role = parent` tiene un `familyId` fijo.
-- Todo endpoint de negocio que devuelva datos de facturación filtra
-  **obligatoriamente** por ese `familyId` cuando quien pregunta es un padre.
+- Todo endpoint de negocio filtra **obligatoriamente** por ese `familyId`
+  cuando quien pregunta es un padre — `dependencies.ensure_family_access()`
+  para lecturas por id, filtro forzado en las queries de listado (el padre no
+  puede pedir el `family_id` de otra familia ni por query param).
+- Acceso denegado a un padre → `404`, no `403` (no confirma si el recurso
+  de otra familia existe).
 - `role = staff` / `admin` son los únicos con acceso transversal (todas las
-  familias, y las `SupplierInvoice`, que un padre nunca ve).
-- En FastAPI: una dependencia (`Depends`) que resuelve el usuario autenticado
-  y expone su `familyId`; los routers de negocio la usan siempre (Fase 1).
+  familias, y las `SupplierInvoice`, que un padre nunca ve) — además son los
+  únicos que pueden escribir (`POST`/`PATCH`) en `families`/`students`/`contracts`/`users`.
 - Invariante nº 1 del proyecto: RULE-005 de [AGENTS.md](../AGENTS.md).
 
 ---
@@ -72,36 +77,44 @@ No hay multi-tenant (una sola empresa), pero sí un invariante equivalente:
 
 ```
 apps/api/
-  pyproject.toml           # uv, deps: fastapi, uvicorn, pydantic-settings
+  pyproject.toml           # uv, deps: fastapi, sqlalchemy, alembic, pyjwt, bcrypt...
+  alembic/                 # migraciones (target_metadata = Base.metadata)
   src/
-    main.py                # bootstrap FastAPI + CORS
+    main.py                # bootstrap FastAPI + CORS + routers
     config.py               # Settings (pydantic-settings)
-    routers/health.py
-  tests/test_health.py      # pytest + TestClient
+    db.py                    # engine, Session, Base, get_db
+    security.py              # hash_password, JWT encode/decode
+    dependencies.py          # get_current_user, require_role, ensure_family_access
+    models/                  # User, Family, Student, Contract (SQLAlchemy 2.0)
+    schemas/                 # Pydantic: auth, user, family, student, contract
+    routers/                 # health, auth, users, families, students, contracts
+  tests/                    # pytest: unit + integracion (TestClient + SQLite)
 apps/web/
-  src/app/                  # App Router: layout, page, globals.css
-  e2e/                      # specs Playwright
+  src/app/                  # App Router: /, /login, /dashboard
+  src/lib/                  # api.ts (cliente HTTP), auth-storage.ts, auth-context.tsx
+  e2e/                      # specs Playwright (mockean la API con page.route)
   playwright.config.ts      # next start en :4123 tras build
 ```
 
-Módulos backend planificados (Fase 1+): auth, families, students, contracts,
-suppliers, ingestion, invoices, notifications.
+Módulos backend planificados (Fase 2+): ingestion, invoices, notifications.
 
 ---
 
 ## Estrategia de pruebas
 
-| Capa        | Herramientas                  | Qué cubre                                             |
-| ----------- | ----------------------------- | ----------------------------------------------------- |
-| Unitaria    | pytest (api)                  | Lógica pura: validaciones, servicios con mocks        |
-| Integración | pytest + `TestClient` (httpx) | Capa HTTP completa contra `/health` y futuros routers |
-| E2E         | Playwright (chromium)         | La landing/dashboard servida por `next start`         |
+| Capa        | Herramientas                           | Qué cubre                                                                                     |
+| ----------- | -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Unitaria    | pytest (api)                           | Lógica pura: hashing, JWT, validaciones                                                       |
+| Integración | pytest + `TestClient` (httpx) + SQLite | Capa HTTP completa: auth, CRUD, invariante `familyId` (24 tests api: 8 unit + 16 integración) |
+| E2E         | Playwright (chromium)                  | Landing, login y dashboard servidos por `next start`, API mockeada                            |
 
 - **E2E contra producción**: igual que en MailForge, Playwright arranca
-  `next start` en `127.0.0.1:4123` (puerto dedicado, host explícito).
-- **Sin base de datos todavía**: ninguna prueba depende de Postgres/Redis;
-  llegan en Fase 1+ con sus propias pruebas (fixtures, no mocks, para la
-  extracción de PDF/XML — ver RULE-008).
+  `next start` en `127.0.0.1:4123` (puerto dedicado, host explícito). Las
+  llamadas a la API se mockean con `page.route()` (sin API real corriendo).
+- **Integración con SQLite, no con mocks del ORM**: cada test crea su propia
+  base SQLite en memoria (`StaticPool`, `check_same_thread=False`) y ejercita
+  modelos + endpoints reales vía `TestClient`. Postgres real (TASK-0009) y
+  fixtures de correos reales para PDF/XML (RULE-008) llegan en Fase 2.
 
 ---
 
@@ -119,17 +132,17 @@ suppliers, ingestion, invoices, notifications.
 
 ## Variables de entorno
 
-| Variable                    | Usada por      | Desde     | Por defecto           |
-| --------------------------- | -------------- | --------- | --------------------- |
-| API_PORT                    | apps/api       | ahora     | 8000                  |
-| CORS_ORIGIN                 | apps/api       | ahora     | http://localhost:3000 |
-| NEXT_PUBLIC_API_URL         | apps/web       | reservada | http://localhost:8000 |
-| E2E_PORT                    | apps/web (E2E) | opcional  | 4123                  |
-| DATABASE_URL                | apps/api       | Fase 1    | -                     |
-| REDIS_URL                   | apps/api       | Fase 2    | -                     |
-| JWT_SECRET / JWT_EXPIRES_IN | apps/api       | Fase 1    | -                     |
-| GMAIL_*                     | apps/api       | Fase 2    | -                     |
-| SMTP_*                      | apps/api       | Fase 4    | Mailpit en desarrollo |
+| Variable                         | Usada por      | Desde                                      | Por defecto                                                  |
+| -------------------------------- | -------------- | ------------------------------------------ | ------------------------------------------------------------ |
+| API_PORT                         | apps/api       | ahora                                      | 8000                                                         |
+| CORS_ORIGIN                      | apps/api       | ahora                                      | http://localhost:3000                                        |
+| NEXT_PUBLIC_API_URL              | apps/web       | reservada                                  | http://localhost:8000                                        |
+| E2E_PORT                         | apps/web (E2E) | opcional                                   | 4123                                                         |
+| DATABASE_URL                     | apps/api       | ahora (Postgres real pendiente, TASK-0009) | postgresql+psycopg://crm:crm@localhost:5432/crm_transporte   |
+| REDIS_URL                        | apps/api       | Fase 2                                     | -                                                            |
+| JWT_SECRET / JWT_EXPIRES_MINUTES | apps/api       | ahora                                      | valor de desarrollo — RULE-006: cambiar en todo entorno real |
+| GMAIL_*                          | apps/api       | Fase 2                                     | -                                                            |
+| SMTP_*                           | apps/api       | Fase 4                                     | Mailpit en desarrollo                                        |
 
 Referencia canónica: `.env.example` en la raíz.
 

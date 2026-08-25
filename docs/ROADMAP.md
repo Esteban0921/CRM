@@ -29,15 +29,20 @@ instalar pero sin verificar todavía — ver TASK-0008).
 
 ---
 
-## Fase 1 – Identidad, familias y alumnos (en curso)
+## Fase 1 – Identidad, familias y alumnos ✅ COMPLETADA
 
 **Objetivo:** login por rol (`parent`/`staff`/`admin`) y CRUD interno de
 familias, alumnos y contratos, con el invariante `familyId` ya aplicado.
 
 - ✅ Backend: modelos `User`/`Family`/`Student`/`Contract` (SQLAlchemy) + primera migración Alembic (TASK-0016).
 - ✅ Backend: auth JWT + hash de contraseña, `POST /auth/login` (TASK-0017).
-- ⏳ Backend: dependencia que inyecta `familyId` para rol `parent` + CRUD interno (rol `staff`/`admin`) de familias/alumnos/contratos (TASK-0018).
-- ⏳ Frontend: login; layout autenticado distinto para padre vs. staff (TASK-0019).
+- ✅ Backend: dependencia que inyecta/fuerza `familyId` para rol `parent` + CRUD interno (rol `staff`/`admin`) de familias/alumnos/contratos (TASK-0018).
+- ✅ Frontend: login; layout autenticado distinto para padre vs. staff (TASK-0019).
+- ✅ Backend: alta de `User` (incluye padres) por staff/admin (TASK-0020).
+
+Pendiente antes de dar Fase 1 por probada en condiciones reales: aplicar la
+migración contra Postgres real (TASK-0009, requiere Docker) y conectar el
+repo a un remoto para ejercitar PRs de verdad (TASK-0010).
 
 No se empieza a construir sobre datos reales de facturación hasta que este
 invariante esté probado con tests — es la pieza de seguridad más importante

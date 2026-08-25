@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from routers import auth, health
+from routers import auth, contracts, families, health, students, users
 
 app = FastAPI(title="CRM Transporte API")
 
@@ -15,3 +15,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(families.router)
+app.include_router(students.router)
+app.include_router(contracts.router)

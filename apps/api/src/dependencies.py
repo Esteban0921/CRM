@@ -38,3 +38,12 @@ def require_role(*roles: UserRole) -> Callable[[User], User]:
         return user
 
     return dependency
+
+
+def ensure_family_access(user: User, family_id: uuid.UUID) -> None:
+    """Invariante RULE-005: un padre solo accede a datos de su propia familia.
+
+    404 en vez de 403 para no confirmar la existencia de otras familias.
+    """
+    if user.role == UserRole.PARENT and user.family_id != family_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurso no encontrado")

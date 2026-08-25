@@ -46,16 +46,22 @@ aquí para que no se pierdan de vista al planificar Fase 1/2.
 
 ## Fase 1 — Identidad, familias y alumnos
 
-| ID        | Título                                                                         | Responsable    | Estado    | Cierre     | Refs / Notas                                                                                                                                                                                               |
-| --------- | ------------------------------------------------------------------------------ | -------------- | --------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TASK-0016 | Modelos SQLAlchemy (User/Family/Student/Contract) + migración inicial Alembic  | Agente         | Hecha     | 2026-08-25 | Enums no nativos con `values_callable` (valores en minúscula, no el nombre); migración generada y verificada (upgrade+downgrade) contra SQLite temporal — falta aplicarla contra Postgres real (TASK-0009) |
-| TASK-0017 | Auth: hash de contraseña (bcrypt) + JWT (pyjwt) + `POST /auth/login`           | Agente         | Hecha     | 2026-08-25 | 12 tests (unit + integración con SQLite in-memory vía `TestClient`); sin endpoint de registro público — los `User` los crea `staff`/`admin` (TASK-0018)                                                    |
-| TASK-0018 | Dependencia `familyId` (RULE-005) + CRUD interno de familias/alumnos/contratos | Esteban/Agente | Pendiente | —          | Bloqueante antes de construir cualquier dato de facturación real                                                                                                                                           |
-| TASK-0019 | Frontend: login + layout autenticado (padre vs. staff)                         | Esteban/Agente | Pendiente | —          | Puede avanzar con mocks en paralelo a TASK-0018                                                                                                                                                            |
+| ID        | Título                                                                         | Responsable | Estado | Cierre     | Refs / Notas                                                                                                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------ | ----------- | ------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0016 | Modelos SQLAlchemy (User/Family/Student/Contract) + migración inicial Alembic  | Agente      | Hecha  | 2026-08-25 | Enums no nativos con `values_callable` (valores en minúscula, no el nombre); migración generada y verificada (upgrade+downgrade) contra SQLite temporal — falta aplicarla contra Postgres real (TASK-0009)            |
+| TASK-0017 | Auth: hash de contraseña (bcrypt) + JWT (pyjwt) + `POST /auth/login`           | Agente      | Hecha  | 2026-08-25 | 12 tests (unit + integración con SQLite in-memory vía `TestClient`); sin endpoint de registro público — los `User` los crea `staff`/`admin` (TASK-0018)                                                               |
+| TASK-0018 | Dependencia `familyId` (RULE-005) + CRUD interno de familias/alumnos/contratos | Agente      | Hecha  | 2026-08-25 | `ensure_family_access` (404, no 403, para no confirmar existencia de otras familias); 12 tests nuevos, incluyendo que un padre nunca puede leer/listar datos de otra familia aunque fuerce el `family_id` en la query |
+| TASK-0019 | Frontend: login + layout autenticado (padre vs. staff)                         | Agente      | Hecha  | 2026-08-25 | `/login` + `/dashboard` con `AuthProvider`; 3 e2e nuevos (login ok, login fallido, redirect sin sesión) mockeando la API con `page.route()` — sin API real corriendo                                                  |
+| TASK-0020 | Endpoint `POST /users` (alta de `User` por staff/admin, incl. padres)          | Agente      | Hecha  | 2026-08-25 | Necesario para poder dar de alta el primer padre de una familia; `family_id` obligatorio si `role=parent`; email duplicado → 409                                                                                      |
 
 ## Fase 2 y siguientes — Pendiente de desglosar
 
 Las tareas de Fase 2 (ingesta de correo) en adelante se dan de alta en este
-ledger conforme se planifiquen, con ids a partir de TASK-0020, siguiendo el
+ledger conforme se planifiquen, con ids a partir de TASK-0021, siguiendo el
 protocolo de arriba. El detalle narrativo de cada fase vive en
 [docs/ROADMAP.md](docs/ROADMAP.md).
+
+Requieren una decisión o recurso externo que solo puede aportar el usuario
+antes de poder empezar (credenciales Gmail API, cuenta de pruebas, volumen
+de correo esperado, schema del XML más frecuente — sección 12 de
+[SPEC_ORIGINAL.md](docs/SPEC_ORIGINAL.md)).

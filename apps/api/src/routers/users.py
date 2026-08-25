@@ -1,0 +1,47 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from db import get_db
+from dependencies import require_role
+from models.user import User, UserRole
+from schemas.user import UserCreate, UserRead
+from security import hash_password
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: UserCreate,
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+) -> User:
+    if payload.role == UserRole.PARENT and payload.family_id is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "family_id es obligatorio para role=parent"
+        )
+
+    user = User(
+        email=payload.email.lower(),
+        password_hash=hash_password(payload.password),
+        name=payload.name,
+        role=payload.role,
+        family_id=payload.family_id if payload.role == UserRole.PARENT else None,
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Ese email ya esta registrado") from exc
+    db.refresh(user)
+    return user
+
+
+@router.get("", response_model=list[UserRead])
+def list_users(
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+) -> list[User]:
+    return db.query(User).order_by(User.name).all()
