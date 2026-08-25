@@ -50,18 +50,18 @@ del proyecto (equivalente a RULE-005).
 
 ---
 
-## Fase 2 – Ingesta de correo y extracción
+## Fase 2 – Ingesta de correo y extracción (esquema listo, pipeline bloqueado)
 
 **Objetivo:** el pipeline descrito en [SPEC_ORIGINAL.md](SPEC_ORIGINAL.md)
-funcionando de punta a punta, escribiendo en `FamilyInvoice` / `SupplierInvoice`
-en vez de en una tabla `documents` genérica.
+funcionando de punta a punta, escribiendo en `FamilyInvoice` / `SupplierInvoice`.
 
-- Conexión Gmail API (OAuth, cuenta de pruebas separada de la real).
-- Worker de ingesta (Celery o RQ + Redis), descarga de adjuntos, extracción de ZIP.
-- Clasificación (reglas deterministas primero) + extracción PDF/XML.
-- Escaneo de adjuntos (antivirus) y límites de tamaño/descompresión antes de procesar
-  cualquier fichero no confiable — bloqueante, no se difiere.
-- Distinción factura-a-familia vs. factura-de-proveedor desde la clasificación.
+- ✅ Modelos `Supplier`/`Email`/`Document`/`FamilyInvoice`/`SupplierInvoice`/`AuditLog` + migración (TASK-0021).
+- ⏳ Conexión Gmail API (OAuth, cuenta de pruebas separada de la real) — **bloqueada, requiere credenciales del usuario** (TASK-0022).
+- ⏳ Worker de ingesta (Celery o RQ + Redis), descarga de adjuntos, extracción de ZIP (TASK-0022).
+- ⏳ Clasificación (reglas deterministas primero) + extracción PDF/XML — **bloqueada, requiere decidir el schema del XML** (TASK-0023).
+- ⏳ Escaneo de adjuntos (antivirus) y límites de tamaño/descompresión antes de procesar
+  cualquier fichero no confiable — bloqueante, no se difiere (TASK-0013).
+- ✅ Distinción factura-a-familia vs. factura-de-proveedor ya está en el modelo de datos.
 
 ---
 

@@ -5,9 +5,13 @@ avancemos en las fases (ver [ROADMAP.md](ROADMAP.md)).
 
 CRM de uso interno (una sola empresa) — no hay tabla `Organization`/tenant.
 
+Marcado ✅ lo ya implementado en `apps/api/src/models/` (con migración
+verificada contra SQLite; Postgres real pendiente, TASK-0009) y ⏳ lo que
+falta por construir (el propio pipeline de ingesta, no solo su esquema).
+
 ---
 
-## Identidad y acceso (Fase 1)
+## Identidad y acceso (Fase 1) ✅
 
 ### User
 
@@ -28,7 +32,7 @@ Login único tanto para padres como para el equipo interno.
 
 ---
 
-## Familias y alumnos (Fase 1)
+## Familias y alumnos (Fase 1) ✅
 
 ### Family
 
@@ -67,7 +71,7 @@ Qué servicio de transporte tiene contratado un alumno. Sin `routeId` todavía
 
 ---
 
-## Proveedores (Fase 1/2)
+## Proveedores (Fase 1/2) ✅
 
 ### Supplier
 
@@ -81,6 +85,10 @@ Qué servicio de transporte tiene contratado un alumno. Sin `routeId` todavía
 ---
 
 ## Ingesta de correo (Fase 2 — igual que el spec original en [SPEC_ORIGINAL.md](SPEC_ORIGINAL.md))
+
+Esquema ✅ implementado; el pipeline que realmente lee Gmail, descarga
+adjuntos y clasifica ⏳ está bloqueado por decisiones externas (credenciales
+OAuth, cuenta de pruebas, schema del XML — sección 12 de SPEC_ORIGINAL.md).
 
 ### Email
 
@@ -114,7 +122,7 @@ Qué servicio de transporte tiene contratado un alumno. Sin `routeId` todavía
 
 ---
 
-## Facturación (Fase 2/3)
+## Facturación (Fase 2/3) — modelo ✅, sin datos reales todavía
 
 Dos entidades separadas en vez de una `Invoice` polimórfica: la factura a
 familia la ve el padre en el dashboard: la de proveedor es solo interna, con
@@ -131,7 +139,7 @@ otro ciclo de vida y otros campos.
 - currency
 - issueDate
 - dueDate
-- status (`pendiente_revision` | `enviada` | `pagada` | `vencida`)
+- status (`pending_review` | `sent` | `paid` | `overdue`)
 - extractedData (JSON)
 - confidence (float)
 - createdAt
@@ -147,16 +155,17 @@ otro ciclo de vida y otros campos.
 - currency
 - issueDate
 - dueDate
-- status (`pendiente_revision` | `aprobada` | `pagada`)
+- status (`pending_review` | `approved` | `paid`)
 - extractedData (JSON)
 - confidence (float)
 - createdAt
 - updatedAt
 
-### AuditLog
+### AuditLog ✅
 
 Trazabilidad de correcciones manuales sobre metadatos extraídos (no cubierto
-por el spec original).
+por el spec original). `entityId` no es FK: según `entityType` apunta a
+`family_invoices` o a `supplier_invoices`, tablas distintas.
 
 - id
 - entityType (`family_invoice` | `supplier_invoice`)

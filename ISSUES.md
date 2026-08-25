@@ -54,14 +54,22 @@ aquí para que no se pierdan de vista al planificar Fase 1/2.
 | TASK-0019 | Frontend: login + layout autenticado (padre vs. staff)                         | Agente      | Hecha  | 2026-08-25 | `/login` + `/dashboard` con `AuthProvider`; 3 e2e nuevos (login ok, login fallido, redirect sin sesión) mockeando la API con `page.route()` — sin API real corriendo                                                  |
 | TASK-0020 | Endpoint `POST /users` (alta de `User` por staff/admin, incl. padres)          | Agente      | Hecha  | 2026-08-25 | Necesario para poder dar de alta el primer padre de una familia; `family_id` obligatorio si `role=parent`; email duplicado → 409                                                                                      |
 
-## Fase 2 y siguientes — Pendiente de desglosar
+## Fase 2 — Ingesta de correo y facturación
 
-Las tareas de Fase 2 (ingesta de correo) en adelante se dan de alta en este
-ledger conforme se planifiquen, con ids a partir de TASK-0021, siguiendo el
-protocolo de arriba. El detalle narrativo de cada fase vive en
-[docs/ROADMAP.md](docs/ROADMAP.md).
+| ID        | Título                                                                             | Responsable | Estado    | Cierre     | Refs / Notas                                                                                                                                                                            |
+| --------- | ---------------------------------------------------------------------------------- | ----------- | --------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0021 | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + migración | Agente      | Hecha     | 2026-08-25 | Solo el esquema; sin pipeline real todavía. 6 tests nuevos (30 en total). Migración verificada (upgrade/downgrade encadenado) contra SQLite — Postgres real sigue pendiente (TASK-0009) |
+| TASK-0022 | Conexión Gmail API (OAuth) + worker de ingesta                                     | —           | Bloqueada | —          | Requiere credenciales OAuth y una cuenta de pruebas separada de la real (decisión del usuario)                                                                                          |
+| TASK-0023 | Motor de clasificación + extracción PDF/XML                                        | —           | Bloqueada | —          | Requiere decidir el schema del XML más frecuente (Facturae/UBL/otro) y si se permite LLM local — sección 12 de SPEC_ORIGINAL.md                                                         |
+| TASK-0013 | Escaneo antivirus + límites zip-bomb en la ingesta de adjuntos                     | Esteban     | Pendiente | —          | RULE-016; bloqueante antes de procesar adjuntos reales, no antes de escribir el esquema                                                                                                 |
 
-Requieren una decisión o recurso externo que solo puede aportar el usuario
-antes de poder empezar (credenciales Gmail API, cuenta de pruebas, volumen
-de correo esperado, schema del XML más frecuente — sección 12 de
-[SPEC_ORIGINAL.md](docs/SPEC_ORIGINAL.md)).
+TASK-0022 y TASK-0023 no pueden empezar sin que el usuario resuelva primero
+las preguntas abiertas de la sección 12 de
+[SPEC_ORIGINAL.md](docs/SPEC_ORIGINAL.md): credenciales Gmail API, cuenta de
+pruebas, volumen de correo esperado y schema del XML más frecuente.
+
+## Fase 3 y siguientes — Pendiente de desglosar
+
+Se dan de alta en este ledger conforme se planifiquen, con ids a partir de
+TASK-0024, siguiendo el protocolo de arriba. El detalle narrativo de cada
+fase vive en [docs/ROADMAP.md](docs/ROADMAP.md).

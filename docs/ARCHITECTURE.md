@@ -42,15 +42,16 @@ El trabajo vivo está en [ISSUES.md](../ISSUES.md).
 
 ## Estado por componente
 
-| Carpeta       | Contenido                                                                                                                                                  | Estado                                 |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `apps/api`    | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                           | ✅ Operativo                           |
-| `apps/web`    | Next.js 15 App Router, Tailwind v4 CSS-first, landing estática                                                                                             | ✅ Operativo                           |
-| Persistencia  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite; falta aplicarla contra Postgres real, TASK-0009) | ✅ Operativo (Postgres real pendiente) |
-| Auth y CRUD   | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                      | ✅ Operativo                           |
-| Frontend auth | `/login` + `/dashboard` (layout distinto padre/staff), token en `localStorage`                                                                             | ✅ Operativo                           |
-| Cola          | Redis + Celery/RQ; ingesta de Gmail                                                                                                                        | 🔧 Fase 2                              |
-| CI (`ci.yml`) | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                          | ✅ Operativo                           |
+| Carpeta               | Contenido                                                                                                                                                  | Estado                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `apps/api`            | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                           | ✅ Operativo                                               |
+| `apps/web`            | Next.js 15 App Router, Tailwind v4 CSS-first, landing estática                                                                                             | ✅ Operativo                                               |
+| Persistencia (Fase 1) | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite; falta aplicarla contra Postgres real, TASK-0009) | ✅ Operativo (Postgres real pendiente)                     |
+| Auth y CRUD           | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                      | ✅ Operativo                                               |
+| Frontend auth         | `/login` + `/dashboard` (layout distinto padre/staff), token en `localStorage`                                                                             | ✅ Operativo                                               |
+| Persistencia (Fase 2) | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + migración (esquema únicamente, sin pipeline)                                      | 🔧 Esquema listo, pipeline bloqueado (TASK-0022/0023)      |
+| Cola                  | Redis + Celery/RQ; ingesta de Gmail                                                                                                                        | 🔒 Bloqueado — requiere credenciales Gmail API del usuario |
+| CI (`ci.yml`)         | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                          | ✅ Operativo                                               |
 
 ---
 
@@ -85,7 +86,7 @@ apps/api/
     db.py                    # engine, Session, Base, get_db
     security.py              # hash_password, JWT encode/decode
     dependencies.py          # get_current_user, require_role, ensure_family_access
-    models/                  # User, Family, Student, Contract (SQLAlchemy 2.0)
+    models/                  # User/Family/Student/Contract + Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog
     schemas/                 # Pydantic: auth, user, family, student, contract
     routers/                 # health, auth, users, families, students, contracts
   tests/                    # pytest: unit + integracion (TestClient + SQLite)
@@ -102,11 +103,11 @@ Módulos backend planificados (Fase 2+): ingestion, invoices, notifications.
 
 ## Estrategia de pruebas
 
-| Capa        | Herramientas                           | Qué cubre                                                                                     |
-| ----------- | -------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Unitaria    | pytest (api)                           | Lógica pura: hashing, JWT, validaciones                                                       |
-| Integración | pytest + `TestClient` (httpx) + SQLite | Capa HTTP completa: auth, CRUD, invariante `familyId` (24 tests api: 8 unit + 16 integración) |
-| E2E         | Playwright (chromium)                  | Landing, login y dashboard servidos por `next start`, API mockeada                            |
+| Capa        | Herramientas                           | Qué cubre                                                                                |
+| ----------- | -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Unitaria    | pytest (api)                           | Lógica pura: hashing, JWT, validaciones                                                  |
+| Integración | pytest + `TestClient` (httpx) + SQLite | Capa HTTP completa: auth, CRUD, invariante `familyId`, modelos de ingesta (30 tests api) |
+| E2E         | Playwright (chromium)                  | Landing, login y dashboard servidos por `next start`, API mockeada                       |
 
 - **E2E contra producción**: igual que en MailForge, Playwright arranca
   `next start` en `127.0.0.1:4123` (puerto dedicado, host explícito). Las
