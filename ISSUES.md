@@ -36,13 +36,13 @@ Estos puntos surgieron al auditar `docs/SPEC_ORIGINAL.md` antes de escribir
 código y ya están reflejados en `docs/ARCHITECTURE.md` / `AGENTS.md`. Se listan
 aquí para que no se pierdan de vista al planificar Fase 1/2.
 
-| ID        | Título                                                                               | Responsable | Estado    | Cierre | Refs / Notas                                                              |
-| --------- | ------------------------------------------------------------------------------------ | ----------- | --------- | ------ | ------------------------------------------------------------------------- |
-| TASK-0011 | Diseñar invariante de acceso por `familyId` antes de construir el dashboard          | Esteban     | Pendiente | —      | RULE-005; Fase 1, no diferible                                            |
-| TASK-0012 | Decidir política RGPD de datos de `Student` (retención, derecho de acceso/supresión) | Esteban     | Pendiente | —      | RULE-015; antes de Fase 3 (dashboard con datos reales)                    |
-| TASK-0013 | Escaneo antivirus + límites zip-bomb en la ingesta de adjuntos                       | Esteban     | Pendiente | —      | RULE-016; Fase 2, bloqueante antes de procesar adjuntos reales            |
-| TASK-0014 | Workflow de cola de revisión para documentos con `confidence` baja                   | Esteban     | Pendiente | —      | Fase 3; hoy el campo existe en el modelo pero no hay vista/flujo asociado |
-| TASK-0015 | Definir mecanismo de notificación a familias (nueva factura, recordatorio)           | Esteban     | Pendiente | —      | Fase 4; el spec original era dashboard "pull-only"                        |
+| ID        | Título                                                                               | Responsable | Estado    | Cierre     | Refs / Notas                                                                      |
+| --------- | ------------------------------------------------------------------------------------ | ----------- | --------- | ---------- | --------------------------------------------------------------------------------- |
+| TASK-0011 | Diseñar invariante de acceso por `familyId` antes de construir el dashboard          | Agente      | Hecha     | 2026-08-25 | Superada por la implementación real en TASK-0018 (`ensure_family_access` + tests) |
+| TASK-0012 | Decidir política RGPD de datos de `Student` (retención, derecho de acceso/supresión) | Esteban     | Pendiente | —          | RULE-015; antes de Fase 3 (dashboard con datos reales)                            |
+| TASK-0013 | Escaneo antivirus + límites zip-bomb en la ingesta de adjuntos                       | Esteban     | Pendiente | —          | RULE-016; Fase 2, bloqueante antes de procesar adjuntos reales                    |
+| TASK-0014 | Workflow de cola de revisión para documentos con `confidence` baja                   | Esteban     | Pendiente | —          | Fase 3; hoy el campo existe en el modelo pero no hay vista/flujo asociado         |
+| TASK-0015 | Definir mecanismo de notificación a familias (nueva factura, recordatorio)           | Esteban     | Pendiente | —          | Fase 4; el spec original era dashboard "pull-only"                                |
 
 ## Fase 1 — Identidad, familias y alumnos
 
@@ -56,20 +56,71 @@ aquí para que no se pierdan de vista al planificar Fase 1/2.
 
 ## Fase 2 — Ingesta de correo y facturación
 
-| ID        | Título                                                                             | Responsable | Estado    | Cierre     | Refs / Notas                                                                                                                                                                            |
-| --------- | ---------------------------------------------------------------------------------- | ----------- | --------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TASK-0021 | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + migración | Agente      | Hecha     | 2026-08-25 | Solo el esquema; sin pipeline real todavía. 6 tests nuevos (30 en total). Migración verificada (upgrade/downgrade encadenado) contra SQLite — Postgres real sigue pendiente (TASK-0009) |
-| TASK-0022 | Conexión Gmail API (OAuth) + worker de ingesta                                     | —           | Bloqueada | —          | Requiere credenciales OAuth y una cuenta de pruebas separada de la real (decisión del usuario)                                                                                          |
-| TASK-0023 | Motor de clasificación + extracción PDF/XML                                        | —           | Bloqueada | —          | Requiere decidir el schema del XML más frecuente (Facturae/UBL/otro) y si se permite LLM local — sección 12 de SPEC_ORIGINAL.md                                                         |
-| TASK-0013 | Escaneo antivirus + límites zip-bomb en la ingesta de adjuntos                     | Esteban     | Pendiente | —          | RULE-016; bloqueante antes de procesar adjuntos reales, no antes de escribir el esquema                                                                                                 |
+| ID        | Título                                                                                       | Responsable | Estado | Cierre     | Refs / Notas                                                                                                                                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------- | ----------- | ------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0021 | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + migración           | Agente      | Hecha  | 2026-08-25 | Solo el esquema; sin pipeline real todavía. 6 tests nuevos (30 en total). Migración verificada (upgrade/downgrade encadenado) contra SQLite — Postgres real sigue pendiente (TASK-0009)                                       |
+| TASK-0022 | Cliente Gmail simulado (`GmailClient` protocol + `FakeGmailClient`) + orquestador de ingesta | Agente      | Hecha  | 2026-08-25 | Decisión 2026-08-25 del usuario: simular credenciales en vez de esperar las reales. Swap a un cliente real es cambiar una implementación, no el orquestador                                                                   |
+| TASK-0023 | Motor de clasificación (reglas) + extracción de campos por plantilla                         | Agente      | Hecha  | 2026-08-25 | Extracción propia inspirada en el patrón de plantillas de `invoice2data` (ver auditoría comparativa) operando sobre texto ya extraído, no sobre el PDF — evita depender de muestras reales de facturas que todavía no existen |
+| TASK-0013 | Límites zip-bomb + interfaz de escaneo de adjuntos (`AttachmentScanner`)                     | Agente      | Hecha  | 2026-08-25 | `NoOpScanner` en dev (no es protección real, lo dice en el nombre y en el log); `ClamdScanner` implementado pero sin verificar — requiere un daemon `clamd` real (TASK-0009/Docker)                                           |
+| TASK-0028 | Fix: `family_invoices.family_id` pasa a nullable                                             | Agente      | Hecha  | 2026-08-25 | Descubierto construyendo TASK-0022: la ingesta automática no sabe a qué familia pertenece un documento; queda `pending_review` sin enlazar hasta que staff lo asigna                                                          |
+| TASK-0029 | Fix: `suppliers.email` (nuevo campo)                                                         | Agente      | Hecha  | 2026-08-25 | Descubierto construyendo TASK-0023: sin esto, `classify_document` no tenía forma de distinguir proveedor conocido vs. familia                                                                                                 |
 
-TASK-0022 y TASK-0023 no pueden empezar sin que el usuario resuelva primero
-las preguntas abiertas de la sección 12 de
-[SPEC_ORIGINAL.md](docs/SPEC_ORIGINAL.md): credenciales Gmail API, cuenta de
-pruebas, volumen de correo esperado y schema del XML más frecuente.
+4 migraciones en total (TASK-0016, TASK-0021, TASK-0028, TASK-0029), cadena
+completa upgrade/downgrade verificada contra SQLite. **50 tests de API**, 4
+e2e de web. Bugs reales que salieron solo al ejecutar el pipeline de punta a
+punta (no al escribirlo): una función sin definir (`_hash_bytes`), un regex
+de extracción roto por `re.IGNORECASE` sobre una clase de caracteres
+mayúscula/minúscula, y un doble de prueba (`FakeGmailClient`) que marcaba
+"visto" en el momento equivocado (al leer el mensaje, no al etiquetarlo) —
+quedan documentados en los commits, no solo corregidos en silencio.
+
+## Auditoría comparativa 2026-08-25 (repos externos + gap analysis)
+
+A petición del usuario: búsqueda en GitHub de proyectos comparables (CRMs de
+transporte escolar, CRMs OSS generalistas, herramientas de extracción de
+facturas) para identificar qué le falta al proyecto. Hallazgos y tareas que
+generaron:
+
+- **`invoice-x/invoice2data`**: no lo añadimos como dependencia (RULE-010 — no
+  necesitamos su CLI ni sus múltiples backends de PDF), pero su patrón de
+  "plantilla por proveedor con keywords + regex" es el que adoptamos en
+  TASK-0023 en vez de un extractor genérico único.
+- **No existe una librería Python madura para Facturae** (el estándar XML
+  español) — confirma que la sección 12 de SPEC_ORIGINAL.md (decidir schema)
+  sigue siendo trabajo real de desarrollo, no una integración trivial.
+- **`barseghyanartur/safezip`** y prior art sobre zip bombs: confirmó el
+  enfoque de límites (ratio de compresión + tamaño acumulado + nº de
+  ficheros) implementado en TASK-0013; no se añadió como dependencia porque
+  la lógica necesaria es ~30 líneas con la librería estándar `zipfile`.
+- **CRMs OSS comparables (Krayin, NextCRM, Atomic CRM, open-crm)** tienen de
+  serie tres cosas que a nosotros nos faltan — quedan registradas como tareas
+  pendientes, no implementadas todavía en esta sesión:
+
+| ID        | Título                                                                                         | Responsable | Estado    | Cierre | Refs / Notas                                                                                                    |
+| --------- | ---------------------------------------------------------------------------------------------- | ----------- | --------- | ------ | --------------------------------------------------------------------------------------------------------------- |
+| TASK-0025 | Notas internas de staff sobre `Family`/`Student`                                               | —           | Pendiente | —      | Hallazgo: Krayin/NextCRM/Atomic CRM tienen notas libres por contacto (ej. "recoge sola los viernes", alergias)  |
+| TASK-0026 | Historial de cambios (audit trail) extendido a `Family`/`Student`/`Contract`, no solo facturas | —           | Pendiente | —      | Hallazgo: NextCRM tiene "full field-level change trail on all CRM entities"; hoy `AuditLog` solo cubre facturas |
+| TASK-0027 | Sistema de tareas/recordatorios de staff vinculados a una familia                              | —           | Pendiente | —      | Hallazgo: patrón común en CRMs comparables (seguimiento de impago, contactar familia, etc.)                     |
+
+- **KillBill** (motor de facturación recurrente) se consideró y se descarta
+  explícitamente: no encaja con la decisión ya tomada de que las facturas
+  llegan por Gmail (no las genera el propio CRM), así que un motor de
+  suscripciones sería trabajo no pedido — no se registra como tarea.
+
+## Seguir de "simulado" a "real" — pendiente, sin bloquear el resto
+
+Todo lo de abajo es sustituir una implementación por otra detrás del mismo
+contrato/protocolo; no requiere rediseño, solo el recurso externo indicado.
+
+| ID        | Título                                                                     | Responsable | Estado    | Cierre | Refs / Notas                                                                                                                                                |
+| --------- | -------------------------------------------------------------------------- | ----------- | --------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0030 | Matching automático `FamilyInvoice` → `Family` (por NIF/nombre/referencia) | —           | Pendiente | —      | Hoy toda `FamilyInvoice` nace sin enlazar (`family_id=None`, `pending_review`); alguien de staff la asigna a mano. Ver TASK-0014 (cola de revisión, Fase 3) |
+| TASK-0031 | Extracción real de texto de PDF (pypdf/pdfplumber, spec original)          | —           | Bloqueada | —      | `extraction.py` opera sobre texto ya extraído (simulado); conectar el backend real necesita muestras reales de facturas (sección 12 SPEC_ORIGINAL.md)       |
+| TASK-0032 | Cliente Gmail real (OAuth) implementando el protocolo `GmailClient`        | —           | Bloqueada | —      | Requiere credenciales OAuth + cuenta de pruebas (decisión pendiente del usuario, pospuesta a propósito el 2026-08-25)                                       |
+| TASK-0033 | `ClamdScanner` real: daemon `clamd` + `pip install clamd`                  | —           | Pendiente | —      | Requiere Docker (TASK-0009); el código ya existe, sin verificar                                                                                             |
 
 ## Fase 3 y siguientes — Pendiente de desglosar
 
 Se dan de alta en este ledger conforme se planifiquen, con ids a partir de
-TASK-0024, siguiendo el protocolo de arriba. El detalle narrativo de cada
+TASK-0034, siguiendo el protocolo de arriba. El detalle narrativo de cada
 fase vive en [docs/ROADMAP.md](docs/ROADMAP.md).

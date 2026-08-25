@@ -24,34 +24,39 @@ El trabajo vivo está en [ISSUES.md](../ISSUES.md).
 │  │ Health ✅   │  │ Auth ✅      │  │ Familias/Alumnos ✅ │    │
 │  └─────────────┘  └──────────────┘  └────────────────────┘    │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐    │
-│  │ Ingesta ⏳  │  │ Facturación ⏳│  │ Proveedores ⏳     │    │
+│  │ Ingesta 🧪  │  │ Facturación 🧪│  │ Proveedores ✅     │    │
 │  └─────────────┘  └──────────────┘  └────────────────────┘    │
 └─────────────┬───────────────────────┬─────────────────────────┘
-              │ SQLAlchemy ⏳          │ Celery/RQ ⏳
+              │ SQLAlchemy ✅          │ Celery/RQ ⏳
      ┌────────▼────────┐     ┌────────▼────────┐
      │   PostgreSQL    │     │  Redis + cola   │
      └─────────────────┘     └────────┬────────┘
                                       │
-                             ┌────────▼────────┐         ┌─────────────┐
-                             │    Mailpit      │ ← dev    │  Gmail API  │
-                             │ (SMTP real luego)│         │  (ingesta) ⏳│
-                             └─────────────────┘         └─────────────┘
+                             ┌────────▼────────┐    ┌──────────────────────┐
+                             │    Mailpit      │← dev│ Gmail API 🧪          │
+                             │ (SMTP real luego)│    │ (FakeGmailClient hoy)│
+                             └─────────────────┘    └──────────────────────┘
 ```
+
+🧪 = construido y con tests en verde, pero contra credenciales/datos
+**simulados** (decisión 2026-08-25 del usuario) — no verificado todavía
+contra Gmail real ni facturas reales.
 
 ---
 
 ## Estado por componente
 
-| Carpeta               | Contenido                                                                                                                                                  | Estado                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `apps/api`            | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                           | ✅ Operativo                                               |
-| `apps/web`            | Next.js 15 App Router, Tailwind v4 CSS-first, landing estática                                                                                             | ✅ Operativo                                               |
-| Persistencia (Fase 1) | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite; falta aplicarla contra Postgres real, TASK-0009) | ✅ Operativo (Postgres real pendiente)                     |
-| Auth y CRUD           | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                      | ✅ Operativo                                               |
-| Frontend auth         | `/login` + `/dashboard` (layout distinto padre/staff), token en `localStorage`                                                                             | ✅ Operativo                                               |
-| Persistencia (Fase 2) | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + migración (esquema únicamente, sin pipeline)                                      | 🔧 Esquema listo, pipeline bloqueado (TASK-0022/0023)      |
-| Cola                  | Redis + Celery/RQ; ingesta de Gmail                                                                                                                        | 🔒 Bloqueado — requiere credenciales Gmail API del usuario |
-| CI (`ci.yml`)         | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                          | ✅ Operativo                                               |
+| Carpeta                | Contenido                                                                                                                                                  | Estado                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `apps/api`             | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                           | ✅ Operativo                                         |
+| `apps/web`             | Next.js 15 App Router, Tailwind v4 CSS-first, landing estática                                                                                             | ✅ Operativo                                         |
+| Persistencia (Fase 1)  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite; falta aplicarla contra Postgres real, TASK-0009) | ✅ Operativo (Postgres real pendiente)               |
+| Auth y CRUD            | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                      | ✅ Operativo                                         |
+| Frontend auth          | `/login` + `/dashboard` (layout distinto padre/staff), token en `localStorage`                                                                             | ✅ Operativo                                         |
+| Persistencia (Fase 2)  | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + 3 migraciones más (nullable/email)                                                | ✅ Operativo (Postgres real pendiente)               |
+| Ingesta (`ingestion/`) | `GmailClient`/`FakeGmailClient`, orquestador, zip-bomb, clasificación, extracción por plantilla                                                            | 🧪 Simulada — 20 tests, sin Gmail/PDF reales todavía |
+| Cola                   | Redis + Celery/RQ; hoy el orquestador corre síncrono, sin cola                                                                                             | ⏳ Fase posterior (no bloquea la ingesta simulada)   |
+| CI (`ci.yml`)          | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                          | ✅ Operativo                                         |
 
 ---
 
@@ -89,6 +94,8 @@ apps/api/
     models/                  # User/Family/Student/Contract + Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog
     schemas/                 # Pydantic: auth, user, family, student, contract
     routers/                 # health, auth, users, families, students, contracts
+    ingestion/                # gmail_client (protocol) + fake_gmail_client, safe_zip,
+                              # scanning (NoOp/Clamd), classification, extraction, pipeline
   tests/                    # pytest: unit + integracion (TestClient + SQLite)
 apps/web/
   src/app/                  # App Router: /, /login, /dashboard
@@ -97,25 +104,30 @@ apps/web/
   playwright.config.ts      # next start en :4123 tras build
 ```
 
-Módulos backend planificados (Fase 2+): ingestion, invoices, notifications.
+Módulos backend planificados (Fase 3+): notifications, tasks/notas internas.
 
 ---
 
 ## Estrategia de pruebas
 
-| Capa        | Herramientas                           | Qué cubre                                                                                |
-| ----------- | -------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Unitaria    | pytest (api)                           | Lógica pura: hashing, JWT, validaciones                                                  |
-| Integración | pytest + `TestClient` (httpx) + SQLite | Capa HTTP completa: auth, CRUD, invariante `familyId`, modelos de ingesta (30 tests api) |
-| E2E         | Playwright (chromium)                  | Landing, login y dashboard servidos por `next start`, API mockeada                       |
+| Capa        | Herramientas                           | Qué cubre                                                                                                       |
+| ----------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Unitaria    | pytest (api)                           | Lógica pura: hashing, JWT, validaciones                                                                         |
+| Integración | pytest + `TestClient` (httpx) + SQLite | Capa HTTP completa: auth, CRUD, invariante `familyId`, pipeline de ingesta con `FakeGmailClient` (50 tests api) |
+| E2E         | Playwright (chromium)                  | Landing, login y dashboard servidos por `next start`, API mockeada                                              |
 
 - **E2E contra producción**: igual que en MailForge, Playwright arranca
   `next start` en `127.0.0.1:4123` (puerto dedicado, host explícito). Las
   llamadas a la API se mockean con `page.route()` (sin API real corriendo).
 - **Integración con SQLite, no con mocks del ORM**: cada test crea su propia
   base SQLite en memoria (`StaticPool`, `check_same_thread=False`) y ejercita
-  modelos + endpoints reales vía `TestClient`. Postgres real (TASK-0009) y
-  fixtures de correos reales para PDF/XML (RULE-008) llegan en Fase 2.
+  modelos + endpoints reales vía `TestClient`. Postgres real sigue pendiente
+  (TASK-0009).
+- **Ingesta con doble de prueba, no con mocks de función suelta**:
+  `FakeGmailClient` implementa el mismo protocolo `GmailClient` que usaría un
+  cliente OAuth real — decide "nuevo" por etiqueta, igual que Gmail de
+  verdad. Esto evitó un bug real: una primera versión marcaba "visto" al leer
+  el mensaje en vez de al etiquetarlo, y el test de idempotencia lo detectó.
 
 ---
 
@@ -150,6 +162,15 @@ Referencia canónica: `.env.example` en la raíz.
 ---
 
 ## Decisiones importantes de diseño
+
+### ¿Por qué simular Gmail en vez de esperar credenciales reales?
+
+Decisión explícita del usuario (2026-08-25): el `GmailClient` es un
+protocolo (puerto/adaptador); `FakeGmailClient` lo implementa en memoria.
+El orquestador (`ingestion/pipeline.py`) no sabe ni le importa cuál de los
+dos usa. Cuando lleguen credenciales reales (TASK-0032), se añade un
+`RealGmailClient` con `google-api-python-client` y se cambia una línea de
+wiring — cero cambios en la lógica ya probada.
 
 ### ¿Por qué FastAPI y no NestJS (como en MailForge)?
 

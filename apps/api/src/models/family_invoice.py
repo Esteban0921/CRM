@@ -23,7 +23,10 @@ class FamilyInvoice(IdMixin, TimestampMixin, Base):
     __tablename__ = "family_invoices"
 
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"))
-    family_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("families.id"))
+    # Nullable: la ingesta automatica no sabe todavia a que familia pertenece
+    # un documento; queda sin enlazar (status=pending_review) hasta que staff
+    # lo asigna manualmente (o una futura tarea de matching automatico).
+    family_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("families.id"), default=None)
     student_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("students.id"), default=None)
     contract_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("contracts.id"), default=None)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), default=None)

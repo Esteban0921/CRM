@@ -78,6 +78,8 @@ Qué servicio de transporte tiene contratado un alumno. Sin `routeId` todavía
 - id
 - name
 - taxId
+- email (nullable) — usado por la clasificación automática para distinguir
+  factura de proveedor vs. factura a familia (TASK-0029)
 - category (`fuel` | `maintenance` | `insurance` | `other`)
 - createdAt
 - updatedAt
@@ -132,7 +134,9 @@ otro ciclo de vida y otros campos.
 
 - id
 - documentId (FK → Document)
-- familyId (FK → Family)
+- familyId (FK → Family, **nullable**: la ingesta automática no sabe a qué
+  familia pertenece un documento; nace sin enlazar y en `pending_review`
+  hasta que staff lo asigna — TASK-0028/TASK-0030)
 - studentId (FK → Student, nullable)
 - contractId (FK → Contract, nullable)
 - amount

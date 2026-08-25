@@ -19,6 +19,9 @@ class Supplier(IdMixin, TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(String(200))
     tax_id: Mapped[str | None] = mapped_column(String(50), default=None)
+    # Usado por ingestion.classification para distinguir factura de
+    # proveedor vs. factura a familia cuando llegan al mismo buzon.
+    email: Mapped[str | None] = mapped_column(String(255), default=None)
     category: Mapped[SupplierCategory] = mapped_column(
         Enum(
             SupplierCategory,

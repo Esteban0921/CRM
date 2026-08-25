@@ -50,18 +50,26 @@ del proyecto (equivalente a RULE-005).
 
 ---
 
-## Fase 2 – Ingesta de correo y extracción (esquema listo, pipeline bloqueado)
+## Fase 2 – Ingesta de correo y extracción ✅ simulada, ⏳ real
 
 **Objetivo:** el pipeline descrito en [SPEC_ORIGINAL.md](SPEC_ORIGINAL.md)
 funcionando de punta a punta, escribiendo en `FamilyInvoice` / `SupplierInvoice`.
 
+Decisión del usuario (2026-08-25): simular credenciales de Gmail en vez de
+esperar a las reales, para poder construir y probar el pipeline entero ya.
+Todo lo de abajo está construido y con 50 tests pasando contra un
+`FakeGmailClient`; pasar a Gmail real es sustituir una implementación detrás
+del mismo protocolo (`GmailClient`), no rediseñar nada (TASK-0032, pospuesta
+a propósito).
+
 - ✅ Modelos `Supplier`/`Email`/`Document`/`FamilyInvoice`/`SupplierInvoice`/`AuditLog` + migración (TASK-0021).
-- ⏳ Conexión Gmail API (OAuth, cuenta de pruebas separada de la real) — **bloqueada, requiere credenciales del usuario** (TASK-0022).
-- ⏳ Worker de ingesta (Celery o RQ + Redis), descarga de adjuntos, extracción de ZIP (TASK-0022).
-- ⏳ Clasificación (reglas deterministas primero) + extracción PDF/XML — **bloqueada, requiere decidir el schema del XML** (TASK-0023).
-- ⏳ Escaneo de adjuntos (antivirus) y límites de tamaño/descompresión antes de procesar
-  cualquier fichero no confiable — bloqueante, no se difiere (TASK-0013).
-- ✅ Distinción factura-a-familia vs. factura-de-proveedor ya está en el modelo de datos.
+- ✅ Orquestador de ingesta + `GmailClient`/`FakeGmailClient` (TASK-0022): idempotencia por `gmail_id`, etiquetas `AUTO/PROCESSED`/`AUTO/FAILED`.
+- ✅ Clasificación por reglas + extracción de campos por plantilla, estilo `invoice2data` (TASK-0023).
+- ✅ Límites zip-bomb (ratio/tamaño/nº ficheros) + interfaz de escaneo, `NoOpScanner` en dev (TASK-0013).
+- ✅ Distinción factura-a-familia vs. factura-de-proveedor (por email de `Supplier` conocido).
+- ⏳ Extracción real de texto de PDF — pypdf/pdfplumber (TASK-0031, necesita muestras reales).
+- ⏳ Matching automático de una `FamilyInvoice` a su `Family` — hoy queda `pending_review` sin enlazar (TASK-0030).
+- ⏳ `ClamdScanner` real — necesita Docker (TASK-0033).
 
 ---
 
