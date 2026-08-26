@@ -76,16 +76,18 @@ a propósito).
 
 ---
 
-## Fase 3 – Dashboards ✅ API completa, 🔧 frontend arrancado
+## Fase 3 – Dashboards ✅ completa (con huecos menores anotados)
 
 **Objetivo:** padres consultando sus facturas; staff revisando y corrigiendo.
 
 - ✅ API: `family-invoices`/`supplier-invoices` (listado filtrable, detalle, corrección con audit trail).
 - ✅ API: notas internas (`Note`) y tareas/recordatorios (`Task`) para staff.
 - ✅ API: exportación de datos de una familia (`GET /families/{id}/export`, RGPD).
-- ✅ Frontend: `/dashboard` (padre) lista sus `FamilyInvoice` reales; `/dashboard/invoices` (staff) es la cola de revisión, filtra `pending_review` y marca `sent` (TASK-0035).
-- ⏳ Frontend: CRUD de familias/alumnos/contratos, notas, tareas y el botón de exportar/anonimizar (TASK-0036/0037/0038) — la API ya existe para las cuatro cosas, falta la pantalla.
-- ⏳ Exportación CSV/Excel de la vista filtrada (la exportación RGPD ya existe pero es JSON, no pensada para uso administrativo masivo).
+- ✅ Frontend: `/dashboard` (padre) lista sus `FamilyInvoice` reales; `/dashboard/invoices` (staff) es la cola de revisión (TASK-0035).
+- ✅ Frontend: `/dashboard/families` (alta/listado) y `/dashboard/families/[id]` (ficha con alumnos, notas, tareas, exportar/anonimizar RGPD) (TASK-0036/0037/0038).
+- ⏳ Frontend: editar un alumno ya creado, y cualquier pantalla de `Contract` (TASK-0039).
+- ⏳ Descarga real (fichero) del export RGPD — hoy vuelca a la consola del navegador (TASK-0040).
+- ⏳ Exportación CSV/Excel de la vista filtrada de facturas (uso administrativo masivo, distinto del export RGPD).
 
 ---
 

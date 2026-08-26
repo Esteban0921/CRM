@@ -133,15 +133,24 @@ tareas) están construidos, no solo anotados.
 
 ## Fase 3 (frontend) — arrancada
 
-| ID        | Título                                                                | Responsable | Estado    | Cierre     | Refs / Notas                                                                                                                                   |
-| --------- | --------------------------------------------------------------------- | ----------- | --------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| TASK-0035 | Frontend: listado real de facturas (padre) + cola de revisión (staff) | Agente      | Hecha     | 2026-08-25 | `/dashboard` (padre, `GET /family-invoices`) y `/dashboard/invoices` (staff, filtra `pending_review`, marca `sent`). 2 e2e nuevos (6 en total) |
-| TASK-0036 | Frontend: CRUD de familias/alumnos/contratos (staff)                  | —           | Pendiente | —          | Hoy solo existe vía API/Swagger (`/docs`); sin pantallas                                                                                       |
-| TASK-0037 | Frontend: notas y tareas (staff)                                      | —           | Pendiente | —          | API lista (TASK-0025/0027), sin pantallas                                                                                                      |
-| TASK-0038 | Frontend: exportación/anonimización RGPD (botón en ficha de familia)  | —           | Pendiente | —          | API lista (TASK-0012), sin UI                                                                                                                  |
+| ID        | Título                                                                | Responsable | Estado    | Cierre     | Refs / Notas                                                                                                                                          |
+| --------- | --------------------------------------------------------------------- | ----------- | --------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0035 | Frontend: listado real de facturas (padre) + cola de revisión (staff) | Agente      | Hecha     | 2026-08-25 | `/dashboard` (padre, `GET /family-invoices`) y `/dashboard/invoices` (staff, filtra `pending_review`, marca `sent`). 2 e2e nuevos (6 en total)        |
+| TASK-0036 | Frontend: alta/listado de familias + alta de alumnos (staff)          | Agente      | Hecha     | 2026-08-25 | `/dashboard/families` (lista + crear) y `/dashboard/families/[id]` (ficha con alta de alumnos). Edición de alumnos/contratos sigue sin UI (TASK-0039) |
+| TASK-0037 | Frontend: notas y tareas (staff)                                      | Agente      | Hecha     | 2026-08-25 | Integradas en la ficha de familia: alta/borrado de notas, alta de tareas + marcar hecha                                                               |
+| TASK-0038 | Frontend: exportación/anonimización RGPD (botón en ficha de familia)  | Agente      | Hecha     | 2026-08-25 | Botones en la ficha de familia; exportar vuelca el JSON a la consola del navegador (sin descarga de fichero todavía, TASK-0040)                       |
+| TASK-0039 | Frontend: edición de alumnos y CRUD de contratos (staff)              | —           | Pendiente | —          | Hoy un alumno solo se crea, no se edita; contratos siguen sin ninguna pantalla                                                                        |
+| TASK-0040 | Frontend: descarga real del export RGPD (fichero, no consola)         | —           | Pendiente | —          | `console.log` + `alert()` es un placeholder deliberado, no pensado para uso real por staff                                                            |
+
+Bug real encontrado con los e2e de TASK-0036 (no en la app, en el propio
+test): un mock `page.route('**/families/${id}', ...)` interceptaba también
+la navegación de Playwright a `/dashboard/families/{id}` (misma cadena de
+sufijo, distinto origen) y la página mostraba el JSON crudo en vez de
+renderizar. Arreglado anclando los mocks al origen de la API
+(`http://localhost:8000/...`) en vez de `**/...`.
 
 ## Fase 3 y siguientes — Pendiente de desglosar
 
 Se dan de alta en este ledger conforme se planifiquen, con ids a partir de
-TASK-0039, siguiendo el protocolo de arriba. El detalle narrativo de cada
+TASK-0041, siguiendo el protocolo de arriba. El detalle narrativo de cada
 fase vive en [docs/ROADMAP.md](docs/ROADMAP.md).

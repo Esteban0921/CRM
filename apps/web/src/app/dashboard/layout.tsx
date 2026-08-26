@@ -25,8 +25,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
           {isStaff ? (
             <>
               <Link href="/dashboard/invoices">Cola de revisión</Link>
-              <span>Familias</span>
-              <span>Alumnos</span>
+              <Link href="/dashboard/families">Familias</Link>
               <span>Facturas de proveedor</span>
             </>
           ) : (
