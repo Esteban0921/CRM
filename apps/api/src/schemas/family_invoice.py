@@ -23,6 +23,7 @@ class FamilyInvoiceRead(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID
     family_id: uuid.UUID | None
+    family_name: str | None = None
     student_id: uuid.UUID | None
     contract_id: uuid.UUID | None
     amount: Decimal | None

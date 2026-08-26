@@ -53,7 +53,7 @@ verificaron contra servicios reales el 2026-08-26.
 | `apps/api`             | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                                                                                                             | ✅ Operativo                                                                                     |
 | Persistencia (Fase 1)  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite y, desde TASK-0009, contra Postgres real)                                                                                           | ✅ Operativo, verificado contra Postgres real                                                    |
 | Auth y CRUD            | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                                                                                                        | ✅ Operativo                                                                                     |
-| Frontend               | `/login`, `/dashboard` (facturas propias si `parent`), `/dashboard/invoices` (cola de revisión), `/dashboard/families` (+ficha con alumnos/notas/tareas/RGPD)                                                                                | ✅ Operativo (falta editar alumno y CRUD de `Contract`, TASK-0039)                               |
+| Frontend               | `/login`, `/dashboard` (facturas propias si `parent`), `/dashboard/invoices` (tablero kanban por estado, TASK-0042), `/dashboard/families` (+ficha con alumnos/notas/tareas/RGPD)                                                            | ✅ Operativo (falta editar alumno y CRUD de `Contract`, TASK-0039)                               |
 | Persistencia (Fase 2)  | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + 3 migraciones más (nullable/email)                                                                                                                                  | ✅ Operativo, verificado contra Postgres real                                                    |
 | Ingesta (`ingestion/`) | `GmailClient`/`FakeGmailClient`, orquestador, zip-bomb, clasificación, extracción por plantilla, matching automático a `Family`; escaneo con `ClamdScanner` real; `POST /ingestion/run` (staff/admin) como punto de entrada real (TASK-0041) | 🧪 Parcial — Gmail y extracción de PDF simulados (TASK-0032/0031); antivirus ya real (TASK-0033) |
 | Cola de revisión       | `family-invoices`/`supplier-invoices`: listado por confianza, detalle, corrección con audit trail                                                                                                                                            | ✅ Operativo                                                                                     |
@@ -109,7 +109,7 @@ apps/api/
   tests/                    # pytest: unit + integracion (TestClient + SQLite)
 apps/web/
   src/app/                  # App Router: /, /login, /dashboard (facturas propias),
-                              # /dashboard/invoices (cola de revisión),
+                              # /dashboard/invoices (tablero kanban por estado, @dnd-kit/core),
                               # /dashboard/families(+[id]) (ficha: alumnos, notas, tareas, RGPD)
   src/lib/                  # api.ts (cliente HTTP), auth-storage.ts, auth-context.tsx
   e2e/                      # specs Playwright (mockean la API con page.route,
@@ -127,16 +127,18 @@ de `Contract`, descarga real (fichero) del export RGPD (TASK-0039/0040).
 | Capa        | Herramientas                           | Qué cubre                                                                                                                             |
 | ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Unitaria    | pytest (api)                           | Lógica pura: hashing, JWT, validaciones                                                                                               |
-| Integración | pytest + `TestClient` (httpx) + SQLite | Capa HTTP completa: auth, CRUD, invariante `familyId`, pipeline de ingesta con `FakeGmailClient`, notificaciones, RGPD (85 tests api) |
-| E2E         | Playwright (chromium)                  | Landing, login, facturas propias, cola de revisión y gestión de familias servidos por `next start`, API mockeada (8 tests web)        |
+| Integración | pytest + `TestClient` (httpx) + SQLite | Capa HTTP completa: auth, CRUD, invariante `familyId`, pipeline de ingesta con `FakeGmailClient`, notificaciones, RGPD (91 tests api) |
+| E2E         | Playwright (chromium)                  | Landing, login, facturas propias, tablero kanban y gestión de familias servidos por `next start`, API mockeada (9 tests web)          |
 
 - **E2E contra producción**: igual que en MailForge, Playwright arranca
   `next start` en `127.0.0.1:4123` (puerto dedicado, host explícito). Las
   llamadas a la API se mockean con `page.route()` (sin API real corriendo).
+  Gotcha (TASK-0042): el preview de desarrollo (`pnpm dev`) y `next build`
+  comparten `.next` — no correr ambos a la vez.
 - **Integración con SQLite, no con mocks del ORM**: cada test crea su propia
   base SQLite en memoria (`StaticPool`, `check_same_thread=False`) y ejercita
-  modelos + endpoints reales vía `TestClient`. Postgres real sigue pendiente
-  (TASK-0009).
+  modelos + endpoints reales vía `TestClient`. Verificado además contra
+  Postgres real (TASK-0009).
 - **Ingesta con doble de prueba, no con mocks de función suelta**:
   `FakeGmailClient` implementa el mismo protocolo `GmailClient` que usaría un
   cliente OAuth real — decide "nuevo" por etiqueta, igual que Gmail de

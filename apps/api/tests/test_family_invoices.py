@@ -1,4 +1,4 @@
-import datetime
+import uuid
 
 from models.audit_log import AuditedEntityType, AuditLog
 from models.document import Document, DocumentType
@@ -15,7 +15,10 @@ def _auth_header(user: User) -> dict[str, str]:
 
 
 def _make_invoice(db_session, family_id=None, confidence=0.5) -> FamilyInvoice:
-    email = Email(gmail_id=f"gmail-{datetime.datetime.now(datetime.UTC).timestamp()}")
+    # uuid4 en vez de un timestamp: dos llamadas seguidas pueden caer en el
+    # mismo tick de reloj (sobre todo en Windows) y violar el unique de
+    # gmail_id — se observo como fallo intermitente real en esta sesion.
+    email = Email(gmail_id=f"gmail-{uuid.uuid4()}")
     db_session.add(email)
     db_session.commit()
     document = Document(
@@ -167,6 +170,33 @@ def test_review_queue_orders_lowest_confidence_first(client, db_session):
 
     confidences = [row["confidence"] for row in response.json()]
     assert confidences == sorted(confidences)
+
+
+def test_list_and_get_include_resolved_family_name(client, db_session):
+    """El tablero kanban (frontend) necesita un nombre legible, no solo el
+    UUID de family_id, para poder mostrar la tarjeta de cada factura.
+    """
+    family = Family(name="Familia Kanban")
+    db_session.add(family)
+    db_session.commit()
+    linked = _make_invoice(db_session, family_id=family.id)
+    unlinked = _make_invoice(db_session, family_id=None)
+    staff = User(
+        email="staff5@example.com",
+        password_hash=hash_password("x"),
+        name="Staff",
+        role=UserRole.STAFF,
+    )
+    db_session.add(staff)
+    db_session.commit()
+
+    list_response = client.get("/family-invoices", headers=_auth_header(staff)).json()
+    listed = {row["id"]: row for row in list_response}
+    fetched = client.get(f"/family-invoices/{linked.id}", headers=_auth_header(staff)).json()
+
+    assert listed[str(linked.id)]["family_name"] == "Familia Kanban"
+    assert listed[str(unlinked.id)]["family_name"] is None
+    assert fetched["family_name"] == "Familia Kanban"
 
 
 def test_filter_by_status(client, db_session):

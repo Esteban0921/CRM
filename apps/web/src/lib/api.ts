@@ -60,6 +60,7 @@ export interface FamilyInvoice {
   id: string;
   document_id: string;
   family_id: string | null;
+  family_name: string | null;
   student_id: string | null;
   contract_id: string | null;
   amount: string | null;

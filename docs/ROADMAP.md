@@ -87,9 +87,21 @@ verificaron contra servicios reales — ver más abajo.
 - ✅ API: exportación de datos de una familia (`GET /families/{id}/export`, RGPD).
 - ✅ Frontend: `/dashboard` (padre) lista sus `FamilyInvoice` reales; `/dashboard/invoices` (staff) es la cola de revisión (TASK-0035).
 - ✅ Frontend: `/dashboard/families` (alta/listado) y `/dashboard/families/[id]` (ficha con alumnos, notas, tareas, exportar/anonimizar RGPD) (TASK-0036/0037/0038).
+- ✅ Frontend: `/dashboard/invoices` como tablero kanban por estado, inspirado en Huly (TASK-0042) — ver "Inspiración de diseño" más abajo.
 - ⏳ Frontend: editar un alumno ya creado, y cualquier pantalla de `Contract` (TASK-0039).
 - ⏳ Descarga real (fichero) del export RGPD — hoy vuelca a la consola del navegador (TASK-0040).
 - ⏳ Exportación CSV/Excel de la vista filtrada de facturas (uso administrativo masivo, distinto del export RGPD).
+- ⏳ Copiar los campos extraídos (`extracted_data`) a las columnas estructuradas `amount`/`issue_date` de la factura (TASK-0043).
+
+### Inspiración de diseño (2026-08-26): Huly, solo en superficie
+
+El usuario pidió tomar [Huly](https://github.com/hcengineering/platform) como
+referencia. Es una plataforma multi-tenant de escala mucho mayor (Svelte,
+30+ microservicios, CockroachDB, Kafka, Elasticsearch, MinIO, Y.js) — no
+aplicable aquí: se confirmó de nuevo que este CRM es de uso interno de una
+sola empresa, para siempre. Se toma inspiración de diseño/UX y vistas
+concretas sobre el stack actual, no la arquitectura. Primera pieza: el
+tablero kanban de la cola de revisión (TASK-0042).
 
 ---
 

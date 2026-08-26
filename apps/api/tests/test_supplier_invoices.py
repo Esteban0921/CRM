@@ -1,4 +1,4 @@
-import datetime
+import uuid
 
 from models.document import Document, DocumentType
 from models.email import Email
@@ -13,7 +13,7 @@ def _auth_header(user: User) -> dict[str, str]:
 
 
 def _make_invoice(db_session) -> SupplierInvoice:
-    email = Email(gmail_id=f"gmail-{datetime.datetime.now(datetime.UTC).timestamp()}")
+    email = Email(gmail_id=f"gmail-{uuid.uuid4()}")
     db_session.add(email)
     db_session.commit()
     document = Document(

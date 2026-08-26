@@ -1,4 +1,4 @@
-import datetime
+import uuid
 from decimal import Decimal
 
 from models.document import Document, DocumentType
@@ -12,7 +12,7 @@ from security import hash_password
 
 
 def _make_invoice(db_session, family_id=None, amount=None) -> FamilyInvoice:
-    email = Email(gmail_id=f"gmail-{datetime.datetime.now(datetime.UTC).timestamp()}")
+    email = Email(gmail_id=f"gmail-{uuid.uuid4()}")
     db_session.add(email)
     db_session.commit()
     document = Document(

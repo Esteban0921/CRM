@@ -162,8 +162,34 @@ sufijo, distinto origen) y la página mostraba el JSON crudo en vez de
 renderizar. Arreglado anclando los mocks al origen de la API
 (`http://localhost:8000/...`) en vez de `**/...`.
 
+## Decisión de producto (2026-08-26): inspiración en Huly, alcance confirmado
+
+El usuario señaló [hcengineering/platform](https://github.com/hcengineering/platform)
+(Huly) como referencia de diseño y funcionalidad. Auditado antes de tocar
+código: Huly es una plataforma de escala y propósito muy distintos (frontend
+Svelte con sistema de diseño propio, 30+ microservicios Node, CockroachDB,
+Kafka/Redpanda, Elasticsearch, MinIO, edición colaborativa con Y.js) —
+pensada para un producto multi-tenant tipo Notion+Linear+Slack. Se confirmó
+explícitamente con el usuario: este CRM sigue siendo de uso interno para una
+sola empresa, para siempre (reafirma la decisión ya tomada el 2026-08-25).
+Conclusión: se toma inspiración de diseño/UX y de vistas concretas sobre el
+stack actual (Next.js/Tailwind + FastAPI/Postgres); no se adopta la
+arquitectura distribuida de Huly, que resuelve problemas de escala que este
+proyecto no tiene.
+
+| ID        | Título                                                                            | Responsable | Estado    | Cierre     | Refs / Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------- | --------------------------------------------------------------------------------- | ----------- | --------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TASK-0042 | Frontend: tablero kanban para la cola de revisión de facturas (inspirado en Huly) | Agente      | Hecha     | 2026-08-26 | `/dashboard/invoices` pasa de lista filtrada a tablero por estado (pending_review/sent/paid/overdue) con drag-and-drop (`@dnd-kit/core`) y un `<select>` accesible por tarjeta como alternativa sin ratón/teclado-only. Backend: `FamilyInvoiceRead.family_name` (una query extra, sin `relationship()` nueva) para que la tarjeta muestre un nombre legible en vez de un UUID. Verificado en el navegador contra Postgres/API reales: cambio de estado vía el select generó un PATCH real, persistido en Postgres, y revertido después de comprobarlo. 3 e2e reescritos + 1 test de API nuevo. De paso, se arregló una flakiness real y ya observada en esta sesión: 3 helpers de test usaban `datetime.now().timestamp()` como id único de `gmail_id` y podían colisionar en el mismo tick de reloj (típico en Windows); se cambió a `uuid4()` |
+| TASK-0043 | Los campos extraídos no se copian a las columnas estructuradas de la factura      | —           | Pendiente | —          | Detectado visualmente al construir el tablero (TASK-0042): una factura recién ingerida muestra "Importe pendiente" aunque `extracted_data.total_amount` sí tenga el valor, porque `_create_invoice_record` (`ingestion/pipeline.py`) nunca lo copia a la columna `amount` (ni `issue_date`). No es un one-liner: hay que parsear formato español (coma decimal, fecha dd/mm/aaaa) con cuidado                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+Gotcha de e2e descubierto en esta sesión: el preview de desarrollo del
+navegador (`pnpm dev`) y `playwright test` (que hace `next build` + `next
+start`) comparten la carpeta `.next` — tenerlos corriendo a la vez corrompe
+el build de producción y `next start` falla con "Could not find a production
+build". Hay que parar el preview de desarrollo antes de correr el e2e.
+
 ## Fase 3 y siguientes — Pendiente de desglosar
 
 Se dan de alta en este ledger conforme se planifiquen, con ids a partir de
-TASK-0042, siguiendo el protocolo de arriba. El detalle narrativo de cada
+TASK-0044, siguiendo el protocolo de arriba. El detalle narrativo de cada
 fase vive en [docs/ROADMAP.md](docs/ROADMAP.md).
