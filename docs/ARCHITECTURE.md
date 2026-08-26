@@ -33,33 +33,35 @@ El trabajo vivo está en [ISSUES.md](../ISSUES.md).
      └─────────────────┘     └────────┬────────┘
                                       │
                              ┌────────▼────────┐    ┌──────────────────────┐
-                             │    Mailpit      │← dev│ Gmail API 🧪          │
-                             │ (SMTP real luego)│    │ (FakeGmailClient hoy)│
+                             │  Mailpit ✅     │← dev│ Gmail API 🧪          │
+                             │ (SMTP real, dev) │    │ (FakeGmailClient hoy)│
                              └─────────────────┘    └──────────────────────┘
 ```
 
 🧪 = construido y con tests en verde, pero contra credenciales/datos
-**simulados** (decisión 2026-08-25 del usuario) — no verificado todavía
-contra Gmail real ni facturas reales.
+**simulados** (decisión 2026-08-25 del usuario) — hoy solo Gmail y la
+extracción de texto de PDF siguen así (TASK-0032/TASK-0031); el resto de
+piezas que empezaron simuladas (ClamAV, SMTP/Mailpit, Postgres real) ya se
+verificaron contra servicios reales el 2026-08-26.
 
 ---
 
 ## Estado por componente
 
-| Carpeta                | Contenido                                                                                                                                                     | Estado                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `apps/api`             | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                              | ✅ Operativo                                                       |
-| Persistencia (Fase 1)  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite; falta aplicarla contra Postgres real, TASK-0009)    | ✅ Operativo (Postgres real pendiente)                             |
-| Auth y CRUD            | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                         | ✅ Operativo                                                       |
-| Frontend               | `/login`, `/dashboard` (facturas propias si `parent`), `/dashboard/invoices` (cola de revisión), `/dashboard/families` (+ficha con alumnos/notas/tareas/RGPD) | ✅ Operativo (falta editar alumno y CRUD de `Contract`, TASK-0039) |
-| Persistencia (Fase 2)  | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + 3 migraciones más (nullable/email)                                                   | ✅ Operativo (Postgres real pendiente)                             |
-| Ingesta (`ingestion/`) | `GmailClient`/`FakeGmailClient`, orquestador, zip-bomb, clasificación, extracción por plantilla, matching automático a `Family`                               | 🧪 Simulada — sin Gmail/PDF reales todavía                         |
-| Cola de revisión       | `family-invoices`/`supplier-invoices`: listado por confianza, detalle, corrección con audit trail                                                             | ✅ Operativo                                                       |
-| Notas y tareas         | `Note` (staff, por Family/Student) y `Task` (recordatorios vinculados a una familia)                                                                          | ✅ Operativo                                                       |
-| Notificaciones         | `EmailSender`/`NoOpEmailSender`/`SmtpEmailSender`; avisa a la familia al enlazar una factura                                                                  | 🧪 Simulada — sin Mailpit real todavía                             |
-| RGPD                   | `GET /families/{id}/export`, `POST /families/{id}/anonymize` — mecanismo listo, política de retención sin decidir (TASK-0012)                                 | ✅ Mecanismo operativo                                             |
-| Cola de trabajo        | Redis + Celery/RQ; hoy el orquestador corre síncrono, sin cola                                                                                                | ⏳ Fase posterior (no bloquea la ingesta simulada)                 |
-| CI (`ci.yml`)          | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                             | ✅ Operativo                                                       |
+| Carpeta                | Contenido                                                                                                                                                                                                                                    | Estado                                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `apps/api`             | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                                                                                                             | ✅ Operativo                                                                                     |
+| Persistencia (Fase 1)  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite y, desde TASK-0009, contra Postgres real)                                                                                           | ✅ Operativo, verificado contra Postgres real                                                    |
+| Auth y CRUD            | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                                                                                                        | ✅ Operativo                                                                                     |
+| Frontend               | `/login`, `/dashboard` (facturas propias si `parent`), `/dashboard/invoices` (cola de revisión), `/dashboard/families` (+ficha con alumnos/notas/tareas/RGPD)                                                                                | ✅ Operativo (falta editar alumno y CRUD de `Contract`, TASK-0039)                               |
+| Persistencia (Fase 2)  | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + 3 migraciones más (nullable/email)                                                                                                                                  | ✅ Operativo, verificado contra Postgres real                                                    |
+| Ingesta (`ingestion/`) | `GmailClient`/`FakeGmailClient`, orquestador, zip-bomb, clasificación, extracción por plantilla, matching automático a `Family`; escaneo con `ClamdScanner` real; `POST /ingestion/run` (staff/admin) como punto de entrada real (TASK-0041) | 🧪 Parcial — Gmail y extracción de PDF simulados (TASK-0032/0031); antivirus ya real (TASK-0033) |
+| Cola de revisión       | `family-invoices`/`supplier-invoices`: listado por confianza, detalle, corrección con audit trail                                                                                                                                            | ✅ Operativo                                                                                     |
+| Notas y tareas         | `Note` (staff, por Family/Student) y `Task` (recordatorios vinculados a una familia)                                                                                                                                                         | ✅ Operativo                                                                                     |
+| Notificaciones         | `EmailSender`/`NoOpEmailSender`/`SmtpEmailSender`; avisa a la familia al enlazar una factura                                                                                                                                                 | ✅ Operativo, verificado contra Mailpit real (TASK-0034)                                         |
+| RGPD                   | `GET /families/{id}/export`, `POST /families/{id}/anonymize` — mecanismo listo, política de retención sin decidir (TASK-0012)                                                                                                                | ✅ Mecanismo operativo                                                                           |
+| Cola de trabajo        | Redis + Celery/RQ; hoy el orquestador corre síncrono, sin cola                                                                                                                                                                               | ⏳ Fase posterior (no bloquea la ingesta simulada)                                               |
+| CI (`ci.yml`)          | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                                                                                                            | ✅ Operativo                                                                                     |
 
 ---
 
@@ -99,7 +101,8 @@ apps/api/
                               # FamilyInvoice/SupplierInvoice/AuditLog + Note/Task
     schemas/                 # Pydantic: uno por modelo de negocio
     routers/                 # health, auth, users, families (+export/anonymize), students,
-                              # contracts, family_invoices, supplier_invoices, notes, tasks
+                              # contracts, family_invoices, supplier_invoices, notes, tasks,
+                              # ingestion (POST /ingestion/run)
     ingestion/                # gmail_client (protocol) + fake_gmail_client, safe_zip,
                               # scanning (NoOp/Clamd), classification, extraction, matching, pipeline
     notifications/            # email_sender (NoOp/Smtp), service (compone y envía avisos)
@@ -156,17 +159,19 @@ de `Contract`, descarga real (fichero) del export RGPD (TASK-0039/0040).
 
 ## Variables de entorno
 
-| Variable                         | Usada por      | Desde                                      | Por defecto                                                  |
-| -------------------------------- | -------------- | ------------------------------------------ | ------------------------------------------------------------ |
-| API_PORT                         | apps/api       | ahora                                      | 8000                                                         |
-| CORS_ORIGIN                      | apps/api       | ahora                                      | http://localhost:3000                                        |
-| NEXT_PUBLIC_API_URL              | apps/web       | reservada                                  | http://localhost:8000                                        |
-| E2E_PORT                         | apps/web (E2E) | opcional                                   | 4123                                                         |
-| DATABASE_URL                     | apps/api       | ahora (Postgres real pendiente, TASK-0009) | postgresql+psycopg://crm:crm@localhost:5432/crm_transporte   |
-| REDIS_URL                        | apps/api       | Fase 2                                     | -                                                            |
-| JWT_SECRET / JWT_EXPIRES_MINUTES | apps/api       | ahora                                      | valor de desarrollo — RULE-006: cambiar en todo entorno real |
-| GMAIL_*                          | apps/api       | Fase 2                                     | -                                                            |
-| SMTP_*                           | apps/api       | Fase 4                                     | Mailpit en desarrollo                                        |
+| Variable                          | Usada por      | Desde                                              | Por defecto                                                  |
+| --------------------------------- | -------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| API_PORT                          | apps/api       | ahora                                              | 8000                                                         |
+| CORS_ORIGIN                       | apps/api       | ahora                                              | http://localhost:3000                                        |
+| NEXT_PUBLIC_API_URL               | apps/web       | reservada                                          | http://localhost:8000                                        |
+| E2E_PORT                          | apps/web (E2E) | opcional                                           | 4123                                                         |
+| DATABASE_URL                      | apps/api       | ahora, verificado contra Postgres real (TASK-0009) | postgresql+psycopg://crm:crm@localhost:5432/crm_transporte   |
+| REDIS_URL                         | apps/api       | Fase 2                                             | -                                                            |
+| JWT_SECRET / JWT_EXPIRES_MINUTES  | apps/api       | ahora                                              | valor de desarrollo — RULE-006: cambiar en todo entorno real |
+| GMAIL_*                           | apps/api       | Fase 2                                             | -                                                            |
+| SMTP_*                            | apps/api       | Fase 4, verificado contra Mailpit real (TASK-0034) | Mailpit en desarrollo                                        |
+| CLAMAV host/port (`ClamdScanner`) | apps/api       | Fase 2, verificado contra ClamAV real (TASK-0033)  | localhost:3310 (servicio `clamav` en docker-compose.yml)     |
+| ATTACHMENTS_DIR                   | apps/api       | Fase 2 (TASK-0041)                                 | ./data/attachments (gitignored)                              |
 
 Referencia canónica: `.env.example` en la raíz.
 

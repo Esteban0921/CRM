@@ -8,6 +8,7 @@ from routers import (
     families,
     family_invoices,
     health,
+    ingestion,
     notes,
     students,
     supplier_invoices,
@@ -34,3 +35,4 @@ app.include_router(family_invoices.router)
 app.include_router(supplier_invoices.router)
 app.include_router(notes.router)
 app.include_router(tasks.router)
+app.include_router(ingestion.router)

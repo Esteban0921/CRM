@@ -34,5 +34,22 @@ services:
       - '1025:1025' # SMTP
       - '8025:8025' # UI web
 
+  clamav:
+    # TASK-0033: escaneo real de adjuntos (RULE-016). start_period largo:
+    # la primera vez descarga las firmas de virus (freshclam), tarda minutos.
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    ports:
+      - '3310:3310'
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ['CMD-SHELL', 'echo PING | nc -w 5 localhost 3310 | grep -q PONG']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+
 volumes:
   postgres-data:
+  clamav-data:

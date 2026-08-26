@@ -4,9 +4,9 @@ from notifications.email_sender import SmtpEmailSender
 
 
 def test_smtp_email_sender_sends_a_well_formed_message():
-    """SmtpEmailSender no tiene servidor real contra el que probar en esta
-    maquina (Mailpit necesita Docker, TASK-0009); se verifica que construye
-    y envia el mensaje correctamente mockeando smtplib.SMTP.
+    """El suite de pytest no depende de Docker (Mailpit real se verifico
+    aparte, TASK-0034): aqui se verifica que SmtpEmailSender construye y
+    envia el mensaje correctamente mockeando smtplib.SMTP.
     """
     mock_client = MagicMock()
     mock_client.__enter__.return_value = mock_client

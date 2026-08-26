@@ -32,9 +32,8 @@ class NoOpEmailSender:
 
 
 class SmtpEmailSender:
-    """Real: smtplib contra SMTP_HOST/SMTP_PORT (Mailpit en desarrollo). Sin
-    verificar en esta sesión: no hay Mailpit corriendo (necesita Docker,
-    TASK-0009).
+    """Real: smtplib contra SMTP_HOST/SMTP_PORT (Mailpit en desarrollo).
+    Verificado en TASK-0034 end-to-end contra Mailpit real.
     """
 
     def send(self, *, to: str, subject: str, body: str) -> None:

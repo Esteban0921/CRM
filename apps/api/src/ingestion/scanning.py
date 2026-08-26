@@ -19,7 +19,7 @@ class NoOpScanner:
     """No escanea nada de verdad. Solo para desarrollo/tests.
 
     RULE-016: en cualquier entorno real hay que sustituirlo por
-    `ClamdScanner` con un daemon `clamd` real corriendo (TASK-0009/Docker).
+    `ClamdScanner` con un daemon `clamd` real corriendo (TASK-0033/Docker).
     """
 
     def scan(self, file_path: str | Path) -> ScanResult:
@@ -27,8 +27,9 @@ class NoOpScanner:
 
 
 class ClamdScanner:
-    """Requiere `pip install clamd` y un daemon clamd real. No verificado en
-    esta sesión: no hay clamd disponible en esta máquina para probarlo.
+    """Requiere `pip install clamd` y un daemon clamd real (servicio `clamav`
+    en docker-compose.yml). Verificado en TASK-0033 contra archivo limpio y
+    contra el string de prueba EICAR.
     """
 
     def __init__(self, host: str = "localhost", port: int = 3310, timeout: float = 10.0):

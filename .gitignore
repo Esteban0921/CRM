@@ -18,6 +18,7 @@ venv/
 *.egg-info/
 *.db
 *.sqlite3
+seed_dev.py
 
 # Env
 .env
@@ -40,3 +41,6 @@ Thumbs.db
 
 # Docker
 postgres-data/
+
+# Adjuntos ingeridos (POST /ingestion/run), ver ATTACHMENTS_DIR
+apps/api/data/
