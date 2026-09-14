@@ -5,9 +5,9 @@ avancemos en las fases (ver [ROADMAP.md](ROADMAP.md)).
 
 CRM de uso interno (una sola empresa) — no hay tabla `Organization`/tenant.
 
-Marcado ✅ lo ya implementado en `apps/api/src/models/` (con migración
-verificada contra SQLite; Postgres real pendiente, TASK-0009) y ⏳ lo que
-falta por construir (el propio pipeline de ingesta, no solo su esquema).
+Marcado ✅ lo ya implementado en `apps/api/src/models/` (migración verificada
+contra SQLite y, desde TASK-0009, contra Postgres real) y ⏳ lo que falta
+por construir (cliente Gmail real y extracción real de PDF).
 
 ---
 
@@ -88,9 +88,8 @@ Qué servicio de transporte tiene contratado un alumno. Sin `routeId` todavía
 
 ## Ingesta de correo (Fase 2 — igual que el spec original en [SPEC_ORIGINAL.md](SPEC_ORIGINAL.md))
 
-Esquema ✅ implementado; el pipeline que realmente lee Gmail, descarga
-adjuntos y clasifica ⏳ está bloqueado por decisiones externas (credenciales
-OAuth, cuenta de pruebas, schema del XML — sección 12 de SPEC_ORIGINAL.md).
+Esquema ✅ implementado; el pipeline simulado (FakeGmailClient) clasifica y
+extrae. Gmail OAuth y extracción real de PDF siguen bloqueados (TASK-0032/0031).
 
 ### Email
 
@@ -139,12 +138,12 @@ otro ciclo de vida y otros campos.
   hasta que staff lo asigna — TASK-0028/TASK-0030)
 - studentId (FK → Student, nullable)
 - contractId (FK → Contract, nullable)
-- amount
+- amount (se rellena al ingerir desde `extracted_data.total_amount`, parseo ES — TASK-0043)
 - currency
-- issueDate
+- issueDate (igual, desde `extracted_data.issue_date`)
 - dueDate
 - status (`pending_review` | `sent` | `paid` | `overdue`)
-- extractedData (JSON)
+- extractedData (JSON; copia cruda de la extracción, no es lo que ve el padre)
 - confidence (float)
 - createdAt
 - updatedAt
@@ -155,7 +154,7 @@ otro ciclo de vida y otros campos.
 - documentId (FK → Document)
 - supplierId (FK → Supplier, nullable)
 - category
-- amount
+- amount (también se rellena al ingerir, TASK-0043)
 - currency
 - issueDate
 - dueDate

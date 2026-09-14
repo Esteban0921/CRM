@@ -31,6 +31,16 @@ class NoOpEmailSender:
         self.sent.append(SentEmail(to=to, subject=subject, body=body))
 
 
+def get_email_sender() -> EmailSender:
+    """SMTP real si Mailpit/servidor responde; si no, NoOp (no es RULE-016)."""
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=3.0):
+            pass
+        return SmtpEmailSender()
+    except OSError:
+        return NoOpEmailSender()
+
+
 class SmtpEmailSender:
     """Real: smtplib contra SMTP_HOST/SMTP_PORT (Mailpit en desarrollo).
     Verificado en TASK-0034 end-to-end contra Mailpit real.

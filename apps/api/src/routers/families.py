@@ -9,7 +9,7 @@ from dependencies import ensure_family_access, get_current_user, require_role
 from models.audit_log import AuditedEntityType
 from models.contract import Contract
 from models.family import Family, FamilyStatus
-from models.family_invoice import FamilyInvoice
+from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
 from models.student import Student, StudentStatus
 from models.user import User, UserRole
 from schemas.contract import ContractRead
@@ -102,7 +102,12 @@ def export_family_data(
     contracts = (
         db.query(Contract).filter(Contract.student_id.in_(student_ids)).all() if student_ids else []
     )
-    invoices = db.query(FamilyInvoice).filter(FamilyInvoice.family_id == family_id).all()
+    invoices_query = db.query(FamilyInvoice).filter(FamilyInvoice.family_id == family_id)
+    if user.role == UserRole.PARENT:
+        invoices_query = invoices_query.filter(
+            FamilyInvoice.status != FamilyInvoiceStatus.PENDING_REVIEW
+        )
+    invoices = invoices_query.all()
 
     return {
         "family": FamilyRead.model_validate(family).model_dump(mode="json"),

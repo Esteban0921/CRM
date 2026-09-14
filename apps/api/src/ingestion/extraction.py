@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import datetime
 import re
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 
 @dataclass
@@ -70,3 +72,45 @@ def _apply_patterns(text: str, patterns: dict[str, str], base_confidence: float)
         tax_id=found.get("tax_id"),
         confidence=round(confidence, 2),
     )
+
+
+def parse_spanish_amount(raw: str | None) -> Decimal | None:
+    """Interpreta importes de facturas ES: `45,00`, `1.234,56`, `45.00`."""
+    if raw is None:
+        return None
+    cleaned = (
+        raw.strip()
+        .replace("€", "")
+        .replace("EUR", "")
+        .replace("eur", "")
+        .replace("\xa0", "")
+        .replace(" ", "")
+    )
+    if not cleaned:
+        return None
+    if "," in cleaned and "." in cleaned:
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    elif "," in cleaned:
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(cleaned)
+    except InvalidOperation:
+        return None
+
+
+def parse_spanish_date(raw: str | None) -> datetime.date | None:
+    """Acepta dd/mm/yyyy, dd-mm-yyyy, dd/mm/yy e ISO yyyy-mm-dd."""
+    if raw is None:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y", "%Y-%m-%d"):
+        try:
+            return datetime.datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None

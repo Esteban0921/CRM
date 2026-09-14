@@ -1,11 +1,13 @@
 import uuid
 
+from main import app
 from models.audit_log import AuditedEntityType, AuditLog
 from models.document import Document, DocumentType
 from models.email import Email
 from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
 from models.user import User, UserRole
+from notifications.email_sender import NoOpEmailSender, get_email_sender
 from security import create_access_token, hash_password
 
 
@@ -14,7 +16,12 @@ def _auth_header(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _make_invoice(db_session, family_id=None, confidence=0.5) -> FamilyInvoice:
+def _make_invoice(
+    db_session,
+    family_id=None,
+    confidence=0.5,
+    status=FamilyInvoiceStatus.PENDING_REVIEW,
+) -> FamilyInvoice:
     # uuid4 en vez de un timestamp: dos llamadas seguidas pueden caer en el
     # mismo tick de reloj (sobre todo en Windows) y violar el unique de
     # gmail_id — se observo como fallo intermitente real en esta sesion.
@@ -26,7 +33,9 @@ def _make_invoice(db_session, family_id=None, confidence=0.5) -> FamilyInvoice:
     )
     db_session.add(document)
     db_session.commit()
-    invoice = FamilyInvoice(document_id=document.id, family_id=family_id, confidence=confidence)
+    invoice = FamilyInvoice(
+        document_id=document.id, family_id=family_id, confidence=confidence, status=status
+    )
     db_session.add(invoice)
     db_session.commit()
     return invoice
@@ -58,8 +67,9 @@ def test_parent_only_sees_own_family_invoices(client, db_session):
     family_b = Family(name="Familia B")
     db_session.add_all([family_a, family_b])
     db_session.commit()
-    _make_invoice(db_session, family_id=family_a.id)
-    _make_invoice(db_session, family_id=family_b.id)
+    _make_invoice(db_session, family_id=family_a.id, status=FamilyInvoiceStatus.SENT)
+    _make_invoice(db_session, family_id=family_a.id)  # pending_review: RULE-017, el padre no la ve
+    _make_invoice(db_session, family_id=family_b.id, status=FamilyInvoiceStatus.SENT)
     _make_invoice(db_session, family_id=None)  # sin enlazar: tampoco es de nadie
     parent_a = User(
         family_id=family_a.id,
@@ -77,6 +87,30 @@ def test_parent_only_sees_own_family_invoices(client, db_session):
     body = response.json()
     assert len(body) == 1
     assert body[0]["family_id"] == str(family_a.id)
+    assert body[0]["status"] == "sent"
+
+
+def test_parent_cannot_read_own_pending_review_invoice(client, db_session):
+    family = Family(name="Familia pendiente")
+    db_session.add(family)
+    db_session.commit()
+    invoice = _make_invoice(db_session, family_id=family.id)
+    parent = User(
+        family_id=family.id,
+        email="padre.pending@example.com",
+        password_hash=hash_password("x"),
+        name="Padre Pending",
+        role=UserRole.PARENT,
+    )
+    db_session.add(parent)
+    db_session.commit()
+
+    listed = client.get("/family-invoices", headers=_auth_header(parent))
+    fetched = client.get(f"/family-invoices/{invoice.id}", headers=_auth_header(parent))
+
+    assert listed.status_code == 200
+    assert listed.json() == []
+    assert fetched.status_code == 404
 
 
 def test_parent_cannot_read_unlinked_invoice_by_id(client, db_session):
@@ -217,3 +251,73 @@ def test_filter_by_status(client, db_session):
 
     assert len(response.json()) == 1
     assert response.json()[0]["status"] == "paid"
+
+
+def test_publishing_a_reviewed_invoice_notifies_parents(client, db_session):
+    family = Family(name="Familia Aviso")
+    db_session.add(family)
+    db_session.commit()
+    invoice = _make_invoice(db_session, family_id=family.id)
+    db_session.add(
+        User(
+            family_id=family.id,
+            email="padre.aviso@example.com",
+            password_hash=hash_password("x"),
+            name="Padre Aviso",
+            role=UserRole.PARENT,
+        )
+    )
+    staff = User(
+        email="staff-aviso@example.com",
+        password_hash=hash_password("x"),
+        name="Staff",
+        role=UserRole.STAFF,
+    )
+    db_session.add(staff)
+    db_session.commit()
+    sender = NoOpEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: sender
+
+    response = client.patch(
+        f"/family-invoices/{invoice.id}",
+        json={"status": "sent"},
+        headers=_auth_header(staff),
+    )
+
+    assert response.status_code == 200
+    assert [mail.to for mail in sender.sent] == ["padre.aviso@example.com"]
+
+
+def test_assigning_family_without_publishing_does_not_notify(client, db_session):
+    family = Family(name="Familia Silencio")
+    db_session.add(family)
+    db_session.commit()
+    invoice = _make_invoice(db_session, family_id=None)
+    db_session.add(
+        User(
+            family_id=family.id,
+            email="padre.silencio@example.com",
+            password_hash=hash_password("x"),
+            name="Padre Silencio",
+            role=UserRole.PARENT,
+        )
+    )
+    staff = User(
+        email="staff-silencio@example.com",
+        password_hash=hash_password("x"),
+        name="Staff",
+        role=UserRole.STAFF,
+    )
+    db_session.add(staff)
+    db_session.commit()
+    sender = NoOpEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: sender
+
+    response = client.patch(
+        f"/family-invoices/{invoice.id}",
+        json={"family_id": str(family.id)},
+        headers=_auth_header(staff),
+    )
+
+    assert response.status_code == 200
+    assert sender.sent == []

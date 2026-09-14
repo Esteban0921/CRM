@@ -46,7 +46,7 @@ test('un padre inicia sesión y ve su dashboard', async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard/);
   await expect(page.getByRole('heading', { name: 'Hola, Ana Padre' })).toBeVisible();
   await expect(page.getByText('Facturas de tu familia')).toBeVisible();
-  await expect(page.getByText('45.00 EUR')).toBeVisible();
+  await expect(page.getByText(/45,00/)).toBeVisible();
 });
 
 test('un fallo de login muestra el mensaje de error', async ({ page }) => {

@@ -24,4 +24,5 @@ Este CRM es de uso interno (una empresa, sin multi-tenant). El módulo de
 ingesta de correo original está descrito en [SPEC_ORIGINAL.md](SPEC_ORIGINAL.md);
 si algo de ese documento choca con [ARCHITECTURE.md](ARCHITECTURE.md) o
 [DATA_MODEL.md](DATA_MODEL.md), estos dos mandan — el spec original es
-contexto histórico, no la fuente de verdad.
+contexto histórico, no la fuente de verdad. El inventario de reglas vs.
+código está en [rules_and_invariants.md](rules_and_invariants.md).

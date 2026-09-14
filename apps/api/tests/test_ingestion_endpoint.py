@@ -118,6 +118,29 @@ def test_parent_cannot_run_ingestion(client, db_session):
     assert response.status_code == 403
 
 
+def test_staff_can_run_demo_inbox(client, db_session):
+    staff = _staff(db_session)
+    mock_smtp = MagicMock()
+    mock_smtp.__enter__.return_value = mock_smtp
+
+    with (
+        patch("routers.ingestion.clamd.ClamdNetworkSocket", return_value=_mock_clamd_clean()),
+        patch("smtplib.SMTP", return_value=mock_smtp),
+    ):
+        response = client.post(
+            "/ingestion/run",
+            json={"use_demo_inbox": True},
+            headers=_auth_header(staff),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["processed"] == 1
+    invoice = db_session.query(FamilyInvoice).one()
+    assert invoice.status == FamilyInvoiceStatus.PENDING_REVIEW
+    assert invoice.amount is not None
+    assert str(invoice.amount) == "45.00"
+
+
 def test_invalid_base64_attachment_is_a_clean_400(client, db_session):
     staff = _staff(db_session)
     payload = _payload()

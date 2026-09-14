@@ -1,17 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { login, ApiError } from '@/lib/api';
 import { setStoredToken } from '@/lib/auth-storage';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setExpired(new URLSearchParams(window.location.search).get('expired') === '1');
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,44 +38,45 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6">
-      <h1 className="text-2xl font-semibold">Iniciar sesión</h1>
-      <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
-        <label className="flex flex-col gap-1">
-          <span className="text-sm">Email</span>
-          <input
+    <main className="flex min-h-screen flex-col items-center justify-center px-4">
+      <Link href="/" className="mb-8 text-sm font-semibold tracking-tight text-brand">
+        CRM Transporte
+      </Link>
+      <Card className="w-full max-w-sm">
+        <h1 className="text-xl font-semibold text-ink">Iniciar sesión</h1>
+        <p className="mt-1 text-sm text-muted">Acceso interno para familias y equipo.</p>
+        {expired && (
+          <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+            Sesión caducada. Vuelve a entrar.
+          </p>
+        )}
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+          <Input
+            label="Email"
             type="email"
             required
             autoComplete="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="rounded border border-neutral-300 px-3 py-2"
           />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-sm">Contraseña</span>
-          <input
+          <Input
+            label="Contraseña"
             type="password"
             required
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="rounded border border-neutral-300 px-3 py-2"
           />
-        </label>
-        {error && (
-          <p role="alert" className="text-sm text-red-600">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded bg-neutral-900 px-4 py-2 text-white disabled:opacity-50"
-        >
-          {submitting ? 'Entrando...' : 'Entrar'}
-        </button>
-      </form>
+          {error && (
+            <p role="alert" className="text-sm text-rose-700">
+              {error}
+            </p>
+          )}
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Entrando...' : 'Entrar'}
+          </Button>
+        </form>
+      </Card>
     </main>
   );
 }

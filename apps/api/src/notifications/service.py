@@ -25,10 +25,11 @@ def compose_new_invoice_notification(invoice: FamilyInvoice, family_name: str) -
 
 
 def notify_new_family_invoice(db: Session, sender: EmailSender, invoice: FamilyInvoice) -> None:
-    """TASK-0015: el spec original era un dashboard "pull-only" — esto avisa
-    quien tiene una factura nueva sin que tenga que entrar a comprobarlo.
-    No hace nada si la factura todavia no esta enlazada a una familia
-    (TASK-0030 no encontró match): no hay a quien avisar todavía.
+    """Avisa a los padres cuando una factura **ya publicada** está lista.
+
+    TASK-0048 / RULE-017: no se llama desde la ingesta. El padre no debe
+    enterarse de un dato que todavía no puede ver. No hace nada si la
+    factura no está enlazada a una familia: no hay a quien avisar.
     """
     if invoice.family_id is None:
         return

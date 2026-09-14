@@ -45,32 +45,35 @@ pnpm e2e                     # Playwright contra build de producción
 ```
 
 El lado API (`apps/api`) requiere Python 3.12+ y [uv](https://docs.astral.sh/uv/)
-instalados — ver [docs/SETUP.md](docs/SETUP.md) (pendiente en esta máquina, TASK-0008).
+instalados — ver [docs/SETUP.md](docs/SETUP.md). Python/uv y Docker Compose ya
+están verificados en esta máquina (TASK-0008/0009).
 
 ---
 
 ## Documentación
 
-| Documento                                 | Descripción                                                          |
-| ----------------------------------------- | -------------------------------------------------------------------- |
-| [SETUP.md](docs/SETUP.md)                 | Cómo levantar el proyecto en local                                   |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md)   | Arquitectura del sistema, pruebas y tooling                          |
-| [DATA_MODEL.md](docs/DATA_MODEL.md)       | Modelo de datos                                                      |
-| [ROADMAP.md](docs/ROADMAP.md)             | Plan de trabajo por fases                                            |
-| [ISSUES.md](ISSUES.md)                    | **Ledger de tareas TASK-XXXX — fuente única de verdad del trabajo**  |
-| [AGENTS.md](AGENTS.md)                    | **Manual de operaciones con reglas RULE-XXX para agentes y humanos** |
-| [CONTRIBUTING.md](docs/CONTRIBUTING.md)   | Resumen humano de cómo trabajamos                                    |
-| [SPEC_ORIGINAL.md](docs/SPEC_ORIGINAL.md) | Spec original del módulo de ingesta de correo (contexto histórico)   |
+| Documento                                               | Descripción                                                          |
+| ------------------------------------------------------- | -------------------------------------------------------------------- |
+| [SETUP.md](docs/SETUP.md)                               | Cómo levantar el proyecto en local                                   |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md)                 | Arquitectura del sistema, pruebas y tooling                          |
+| [DATA_MODEL.md](docs/DATA_MODEL.md)                     | Modelo de datos                                                      |
+| [ROADMAP.md](docs/ROADMAP.md)                           | Plan de trabajo por fases                                            |
+| [ISSUES.md](ISSUES.md)                                  | **Ledger de tareas TASK-XXXX — fuente única de verdad del trabajo**  |
+| [AGENTS.md](AGENTS.md)                                  | **Manual de operaciones con reglas RULE-XXX para agentes y humanos** |
+| [CONTRIBUTING.md](docs/CONTRIBUTING.md)                 | Resumen humano de cómo trabajamos                                    |
+| [changes_architecture.md](docs/changes_architecture.md) | Contraste diseño vs. producto (vivo, 2026-09-14)                     |
+| [rules_and_invariants.md](docs/rules_and_invariants.md) | Inventario RULE-XXX vs. código e invariantes de producto             |
+| [SPEC_ORIGINAL.md](docs/SPEC_ORIGINAL.md)               | Spec original del módulo de ingesta de correo (contexto histórico)   |
 
 ---
 
 ## Estado actual
 
-**Fase 0 completada — Fundación operativa**: monorepo, API, web, tests
-(integración API + E2E web), linting y CI configurados. Pendiente verificar
-en runtime lo que requiere Python/uv y Docker instalados (ver ISSUES.md
-TASK-0008/0009). Siguiente parada: Fase 1 (identidad, familias y alumnos)
-según [docs/ROADMAP.md](docs/ROADMAP.md).
+Fases 0–3 operativas: login por rol, familias/alumnos/contratos, colas de
+revisión (familias y proveedor), ingesta simulada con botón de demo, export
+RGPD como fichero y un sistema de diseño propio. Siguen fuera Gmail OAuth y
+la extracción real de PDF (TASK-0032/0031). El contraste diseño vs. producto
+vive en [docs/changes_architecture.md](docs/changes_architecture.md).
 
 ---
 

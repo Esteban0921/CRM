@@ -5,13 +5,23 @@ import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { createFamily, getFamilies, ApiError, type Family } from '@/lib/api';
 import { getStoredToken } from '@/lib/auth-storage';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
+import { useToast } from '@/components/ui/toast';
 
 export default function FamiliesPage() {
+  const { notify } = useToast();
   const [families, setFamilies] = useState<Family[] | null>(null);
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [open, setOpen] = useState(false);
 
   function reload() {
     const token = getStoredToken();
@@ -33,6 +43,8 @@ export default function FamiliesPage() {
       await createFamily(token, { name, address: address || undefined });
       setName('');
       setAddress('');
+      setOpen(false);
+      notify('Familia creada');
       reload();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo crear la familia');
@@ -43,52 +55,72 @@ export default function FamiliesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">Familias</h1>
+      <PageHeader
+        title="Familias"
+        description="Alumnos, contratos y facturación por familia."
+        actions={<Button onClick={() => setOpen(true)}>Nueva familia</Button>}
+      />
 
-      <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Nombre</span>
-          <input
+      <Dialog open={open} title="Nueva familia" onClose={() => setOpen(false)}>
+        <form onSubmit={handleCreate} className="flex flex-col gap-3">
+          <Input
+            label="Nombre"
             required
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="rounded border border-neutral-300 px-2 py-1"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Dirección (opcional)</span>
-          <input
+          <Input
+            label="Dirección (opcional)"
             value={address}
             onChange={(event) => setAddress(event.target.value)}
-            className="rounded border border-neutral-300 px-2 py-1"
           />
-        </label>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-        >
-          Añadir familia
-        </button>
-      </form>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-rose-700">{error}</p>}
+          <Button type="submit" disabled={submitting}>
+            Añadir familia
+          </Button>
+        </form>
+      </Dialog>
 
       {families === null ? (
-        <p className="text-sm text-neutral-500">Cargando...</p>
+        <p className="text-sm text-muted">Cargando...</p>
       ) : families.length === 0 ? (
-        <p className="text-sm text-neutral-500">Todavía no hay familias.</p>
+        <EmptyState
+          title="Todavía no hay familias."
+          description="Crea la primera para poder dar de alta alumnos y contratos."
+          action={<Button onClick={() => setOpen(true)}>Nueva familia</Button>}
+        />
       ) : (
-        <ul className="flex flex-col gap-1">
-          {families.map((family) => (
-            <li key={family.id}>
-              <Link href={`/dashboard/families/${family.id}`} className="text-sm underline">
-                {family.name}
-              </Link>
-              <span className="ml-2 text-xs text-neutral-500">{family.status}</span>
-            </li>
-          ))}
-        </ul>
+        <Card className="overflow-hidden p-0">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-line bg-canvas/80 text-muted">
+              <tr>
+                <th className="px-4 py-3 font-medium">Nombre</th>
+                <th className="px-4 py-3 font-medium">Dirección</th>
+                <th className="px-4 py-3 font-medium">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {families.map((family) => (
+                <tr key={family.id} className="border-b border-line last:border-0">
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/dashboard/families/${family.id}`}
+                      className="font-medium text-brand hover:underline"
+                    >
+                      {family.name}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{family.address ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    <Badge tone={family.status === 'active' ? 'emerald' : 'slate'}>
+                      {family.status === 'active' ? 'Activa' : 'Inactiva'}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
       )}
     </div>
   );

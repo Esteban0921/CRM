@@ -23,6 +23,7 @@ class SupplierInvoiceRead(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID
     supplier_id: uuid.UUID | None
+    supplier_name: str | None = None
     category: SupplierCategory
     amount: Decimal | None
     currency: str

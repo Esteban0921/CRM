@@ -144,6 +144,14 @@ cualquier parser lo abra. Ningún parser de PDF/XML corre sin límite de
 recursos (protección zip-bomb / decompression bomb). Esto es Fase 2, no se
 difiere a "robustez" (RULE-008 aplica: es lógica de seguridad, necesita test).
 
+### RULE-017 — El padre no ve facturas sin revisar
+
+Un `User` con `role = parent` nunca lista ni lee por id una `FamilyInvoice`
+en `status = pending_review`. El dato extraído todavía no es un dato de
+negocio publicado: puede estar mal clasificado, mal emparejado o contener
+identificadores de un menor (RULE-015). Acceso denegado → `404`, igual que
+RULE-005. Staff/admin sí las ven: son el contenido de la cola de revisión.
+
 ---
 
 ## Definición de hecho (Definition of Done)

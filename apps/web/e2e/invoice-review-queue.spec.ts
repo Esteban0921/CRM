@@ -42,6 +42,24 @@ test.beforeEach(async ({ page }) => {
   await page.route(`${API}/auth/me`, async (route) => {
     await route.fulfill({ json: STAFF_ME });
   });
+  await page.route(`${API}/families`, async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: PENDING_INVOICE.family_id,
+          name: 'Familia Garcia',
+          address: null,
+          status: 'active',
+        },
+        {
+          id: PAID_INVOICE.family_id,
+          name: 'Familia Lopez',
+          address: null,
+          status: 'active',
+        },
+      ],
+    });
+  });
 });
 
 test('staff ve las facturas organizadas en un tablero por estado', async ({ page }) => {
@@ -53,9 +71,9 @@ test('staff ve las facturas organizadas en un tablero por estado', async ({ page
 
   await expect(page.getByRole('heading', { name: 'Cola de revisión' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Pendiente de revisión' })).toBeVisible();
-  await expect(page.getByText('Familia Garcia')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Familia Garcia/ })).toBeVisible();
   await expect(page.getByText('35% confianza')).toBeVisible();
-  await expect(page.getByText('Familia Lopez')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Familia Lopez/ })).toBeVisible();
 });
 
 test('staff puede cambiar el estado de una factura desde su tarjeta', async ({ page }) => {
@@ -72,6 +90,27 @@ test('staff puede cambiar el estado de una factura desde su tarjeta', async ({ p
   await page.getByLabel('Cambiar estado de la factura de Familia Garcia').selectOption('sent');
 
   await expect.poll(() => patchedBody?.status).toBe('sent');
+});
+
+test('staff puede asignar una familia a una factura sin enlazar', async ({ page }) => {
+  const unlinked = { ...PENDING_INVOICE, family_id: null, family_name: null };
+  let patchedBody: Record<string, unknown> | null = null;
+  await page.route(`${API}/family-invoices`, async (route) => {
+    await route.fulfill({ json: [unlinked] });
+  });
+  await page.route(`${API}/family-invoices/${unlinked.id}`, async (route) => {
+    patchedBody = JSON.parse(route.request().postData() ?? '{}');
+    await route.fulfill({
+      json: { ...unlinked, family_id: patchedBody.family_id, family_name: 'Familia Garcia' },
+    });
+  });
+
+  await page.goto('/dashboard/invoices');
+  await page
+    .getByLabel('Asignar familia de la factura de sin asignar')
+    .selectOption(PENDING_INVOICE.family_id as string);
+
+  await expect.poll(() => patchedBody?.family_id).toBe(PENDING_INVOICE.family_id);
 });
 
 test('sin facturas, el tablero lo dice claramente', async ({ page }) => {

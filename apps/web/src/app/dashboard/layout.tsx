@@ -1,42 +1,53 @@
 'use client';
 
+import { useState } from 'react';
 import type { ReactNode } from 'react';
-import Link from 'next/link';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { ToastProvider } from '@/components/ui/toast';
+import { Sidebar } from '@/components/shell/sidebar';
+import { Button } from '@/components/ui/button';
 
 function DashboardShell({ children }: { children: ReactNode }) {
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   if (loading) {
-    return <p className="p-6">Cargando...</p>;
+    return <p className="p-8 text-sm text-muted">Cargando...</p>;
   }
 
   if (!user) {
     return null;
   }
 
-  const isStaff = user.role === 'staff' || user.role === 'admin';
-
   return (
-    <div className="flex min-h-screen">
-      <aside className="w-56 shrink-0 border-r border-neutral-200 p-4">
-        <p className="mb-6 font-semibold">CRM Transporte</p>
-        <nav className="flex flex-col gap-2 text-sm">
-          {isStaff ? (
-            <>
-              <Link href="/dashboard/invoices">Cola de revisión</Link>
-              <Link href="/dashboard/families">Familias</Link>
-              <span>Facturas de proveedor</span>
-            </>
-          ) : (
-            <Link href="/dashboard">Mis facturas</Link>
-          )}
-        </nav>
-        <button onClick={logout} className="mt-8 text-sm text-neutral-500 underline">
-          Cerrar sesión
-        </button>
-      </aside>
-      <main className="flex-1 p-6">{children}</main>
+    <div className="min-h-screen lg:flex">
+      <div className="hidden lg:block">
+        <div className="sticky top-0 h-screen">
+          <Sidebar />
+        </div>
+      </div>
+      {menuOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink/40"
+            aria-label="Cerrar menú"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="relative h-full w-60">
+            <Sidebar onNavigate={() => setMenuOpen(false)} />
+          </div>
+        </div>
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between border-b border-line bg-paper px-4 py-3 lg:hidden">
+          <p className="font-semibold text-brand">CRM Transporte</p>
+          <Button variant="secondary" size="sm" onClick={() => setMenuOpen(true)}>
+            Menú
+          </Button>
+        </header>
+        <main className="flex-1 p-6 lg:p-8">{children}</main>
+      </div>
     </div>
   );
 }
@@ -44,7 +55,9 @@ function DashboardShell({ children }: { children: ReactNode }) {
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <AuthProvider>
-      <DashboardShell>{children}</DashboardShell>
+      <ToastProvider>
+        <DashboardShell>{children}</DashboardShell>
+      </ToastProvider>
     </AuthProvider>
   );
 }

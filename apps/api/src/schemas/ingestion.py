@@ -22,10 +22,12 @@ class RawEmailIn(BaseModel):
 
 class IngestionRunRequest(BaseModel):
     """Gmail real sigue pendiente (TASK-0032): mientras tanto, quien llama a
-    /ingestion/run aporta los correos "recibidos" (simulados) aquí mismo.
+    /ingestion/run aporta los correos "recibidos" (simulados) aquí mismo, o
+    pide el buzón de demo (TASK-0048).
     """
 
     emails: list[RawEmailIn] = Field(default_factory=list)
+    use_demo_inbox: bool = False
 
 
 class IngestionRunResult(BaseModel):

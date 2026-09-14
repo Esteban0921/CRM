@@ -7,6 +7,7 @@ from audit import record_field_changes
 from db import get_db
 from dependencies import require_role
 from models.audit_log import AuditedEntityType
+from models.supplier import Supplier
 from models.supplier_invoice import SupplierInvoice, SupplierInvoiceStatus
 from models.user import User, UserRole
 from schemas.supplier_invoice import SupplierInvoiceRead, SupplierInvoiceUpdate
@@ -15,16 +16,32 @@ from schemas.supplier_invoice import SupplierInvoiceRead, SupplierInvoiceUpdate
 router = APIRouter(prefix="/supplier-invoices", tags=["supplier-invoices"])
 
 
+def _with_supplier_names(db: Session, invoices: list[SupplierInvoice]) -> list[SupplierInvoiceRead]:
+    supplier_ids = {invoice.supplier_id for invoice in invoices if invoice.supplier_id is not None}
+    names = (
+        dict(db.query(Supplier.id, Supplier.name).filter(Supplier.id.in_(supplier_ids)).all())
+        if supplier_ids
+        else {}
+    )
+    return [
+        SupplierInvoiceRead.model_validate(invoice).model_copy(
+            update={"supplier_name": names.get(invoice.supplier_id)}
+        )
+        for invoice in invoices
+    ]
+
+
 @router.get("", response_model=list[SupplierInvoiceRead])
 def list_supplier_invoices(
     invoice_status: SupplierInvoiceStatus | None = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
     _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
-) -> list[SupplierInvoice]:
+) -> list[SupplierInvoiceRead]:
     query = db.query(SupplierInvoice)
     if invoice_status is not None:
         query = query.filter(SupplierInvoice.status == invoice_status)
-    return query.order_by(SupplierInvoice.confidence.asc().nullsfirst()).all()
+    invoices = query.order_by(SupplierInvoice.confidence.asc().nullsfirst()).all()
+    return _with_supplier_names(db, invoices)
 
 
 @router.get("/{invoice_id}", response_model=SupplierInvoiceRead)
@@ -32,11 +49,11 @@ def get_supplier_invoice(
     invoice_id: uuid.UUID,
     db: Session = Depends(get_db),
     _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
-) -> SupplierInvoice:
+) -> SupplierInvoiceRead:
     invoice = db.get(SupplierInvoice, invoice_id)
     if invoice is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
-    return invoice
+    return _with_supplier_names(db, [invoice])[0]
 
 
 @router.patch("/{invoice_id}", response_model=SupplierInvoiceRead)
@@ -63,4 +80,4 @@ def update_supplier_invoice(
     )
     db.commit()
     db.refresh(invoice)
-    return invoice
+    return _with_supplier_names(db, [invoice])[0]

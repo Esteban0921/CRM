@@ -15,7 +15,7 @@ El trabajo vivo está en [ISSUES.md](../ISSUES.md).
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                  Next.js (apps/web) ✅                       │
-│  Landing · login · facturas (padre) · cola revisión (staff)  │
+│  Landing · login · dashboards padre/staff · kanban · familias │
 └─────────────────────────────┬─────────────────────────────────┘
                               │ HTTP / JSON
 ┌─────────────────────────────▼─────────────────────────────────┐
@@ -48,20 +48,20 @@ verificaron contra servicios reales el 2026-08-26.
 
 ## Estado por componente
 
-| Carpeta                | Contenido                                                                                                                                                                                                                                    | Estado                                                                                           |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `apps/api`             | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                                                                                                             | ✅ Operativo                                                                                     |
-| Persistencia (Fase 1)  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite y, desde TASK-0009, contra Postgres real)                                                                                           | ✅ Operativo, verificado contra Postgres real                                                    |
-| Auth y CRUD            | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                                                                                                        | ✅ Operativo                                                                                     |
-| Frontend               | `/login`, `/dashboard` (facturas propias si `parent`), `/dashboard/invoices` (tablero kanban por estado, TASK-0042), `/dashboard/families` (+ficha con alumnos/notas/tareas/RGPD)                                                            | ✅ Operativo (falta editar alumno y CRUD de `Contract`, TASK-0039)                               |
-| Persistencia (Fase 2)  | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + 3 migraciones más (nullable/email)                                                                                                                                  | ✅ Operativo, verificado contra Postgres real                                                    |
-| Ingesta (`ingestion/`) | `GmailClient`/`FakeGmailClient`, orquestador, zip-bomb, clasificación, extracción por plantilla, matching automático a `Family`; escaneo con `ClamdScanner` real; `POST /ingestion/run` (staff/admin) como punto de entrada real (TASK-0041) | 🧪 Parcial — Gmail y extracción de PDF simulados (TASK-0032/0031); antivirus ya real (TASK-0033) |
-| Cola de revisión       | `family-invoices`/`supplier-invoices`: listado por confianza, detalle, corrección con audit trail                                                                                                                                            | ✅ Operativo                                                                                     |
-| Notas y tareas         | `Note` (staff, por Family/Student) y `Task` (recordatorios vinculados a una familia)                                                                                                                                                         | ✅ Operativo                                                                                     |
-| Notificaciones         | `EmailSender`/`NoOpEmailSender`/`SmtpEmailSender`; avisa a la familia al enlazar una factura                                                                                                                                                 | ✅ Operativo, verificado contra Mailpit real (TASK-0034)                                         |
-| RGPD                   | `GET /families/{id}/export`, `POST /families/{id}/anonymize` — mecanismo listo, política de retención sin decidir (TASK-0012)                                                                                                                | ✅ Mecanismo operativo                                                                           |
-| Cola de trabajo        | Redis + Celery/RQ; hoy el orquestador corre síncrono, sin cola                                                                                                                                                                               | ⏳ Fase posterior (no bloquea la ingesta simulada)                                               |
-| CI (`ci.yml`)          | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                                                                                                            | ✅ Operativo                                                                                     |
+| Carpeta                | Contenido                                                                                                                                                                                                                                                                               | Estado                                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `apps/api`             | FastAPI, módulo health (`GET /health`), CORS, `API_PORT` por env                                                                                                                                                                                                                        | ✅ Operativo                                                                                     |
+| Persistencia (Fase 1)  | SQLAlchemy + Alembic; modelos User/Family/Student/Contract + migración inicial (verificada contra SQLite y, desde TASK-0009, contra Postgres real)                                                                                                                                      | ✅ Operativo, verificado contra Postgres real                                                    |
+| Auth y CRUD            | JWT + bcrypt; `POST /auth/login`, `GET /auth/me`; CRUD `families`/`students`/`contracts`/`users` con invariante `familyId` (RULE-005)                                                                                                                                                   | ✅ Operativo                                                                                     |
+| Frontend               | Sistema de diseño propio (TASK-0047). `/login`, `/dashboard` (padre: facturas publicadas; staff: métricas), `/dashboard/invoices` (kanban + asignar familia), `/dashboard/suppliers` (kanban proveedor), `/dashboard/families` (ficha: alumnos, contratos, notas, tareas, RGPD fichero) | ✅ Operativo                                                                                     |
+| Persistencia (Fase 2)  | Modelos Supplier/Email/Document/FamilyInvoice/SupplierInvoice/AuditLog + 3 migraciones más (nullable/email)                                                                                                                                                                             | ✅ Operativo, verificado contra Postgres real                                                    |
+| Ingesta (`ingestion/`) | `GmailClient`/`FakeGmailClient`, orquestador, zip-bomb, clasificación, extracción por plantilla, matching automático a `Family`; escaneo con `ClamdScanner` real; `POST /ingestion/run` (staff/admin) como punto de entrada real (TASK-0041)                                            | 🧪 Parcial — Gmail y extracción de PDF simulados (TASK-0032/0031); antivirus ya real (TASK-0033) |
+| Cola de revisión       | `family-invoices`/`supplier-invoices`: listado por confianza, detalle, corrección con audit trail                                                                                                                                                                                       | ✅ Operativo                                                                                     |
+| Notas y tareas         | `Note` (staff, por Family/Student) y `Task` (recordatorios vinculados a una familia)                                                                                                                                                                                                    | ✅ Operativo                                                                                     |
+| Notificaciones         | `EmailSender`/`NoOpEmailSender`/`SmtpEmailSender`; avisa a la familia al enlazar una factura                                                                                                                                                                                            | ✅ Operativo, verificado contra Mailpit real (TASK-0034)                                         |
+| RGPD                   | `GET /families/{id}/export`, `POST /families/{id}/anonymize` — mecanismo listo, política de retención sin decidir (TASK-0012)                                                                                                                                                           | ✅ Mecanismo operativo                                                                           |
+| Cola de trabajo        | Redis + Celery/RQ; hoy el orquestador corre síncrono, sin cola                                                                                                                                                                                                                          | ⏳ Fase posterior (no bloquea la ingesta simulada)                                               |
+| CI (`ci.yml`)          | JS: format → lint → build → test → e2e. API: format → lint → test                                                                                                                                                                                                                       | ✅ Operativo                                                                                     |
 
 ---
 
@@ -74,7 +74,10 @@ No hay multi-tenant (una sola empresa), pero sí un invariante equivalente,
 - Todo endpoint de negocio filtra **obligatoriamente** por ese `familyId`
   cuando quien pregunta es un padre — `dependencies.ensure_family_access()`
   para lecturas por id, filtro forzado en las queries de listado (el padre no
-  puede pedir el `family_id` de otra familia ni por query param).
+  puede pedir el `family_id` de otra familia ni por query param). Un recurso
+  sin `familyId` (factura aún sin enlazar) tampoco es del padre.
+- Un padre **nunca** ve `FamilyInvoice` en `pending_review` (RULE-017): el
+  dato extraído no se publica a la familia hasta que staff lo revisa.
 - Acceso denegado a un padre → `404`, no `403` (no confirma si el recurso
   de otra familia existe).
 - `role = staff` / `admin` son los únicos con acceso transversal (todas las
@@ -108,17 +111,17 @@ apps/api/
     notifications/            # email_sender (NoOp/Smtp), service (compone y envía avisos)
   tests/                    # pytest: unit + integracion (TestClient + SQLite)
 apps/web/
-  src/app/                  # App Router: /, /login, /dashboard (facturas propias),
-                              # /dashboard/invoices (tablero kanban por estado, @dnd-kit/core),
-                              # /dashboard/families(+[id]) (ficha: alumnos, notas, tareas, RGPD)
-  src/lib/                  # api.ts (cliente HTTP), auth-storage.ts, auth-context.tsx
+  src/app/                  # App Router: /, /login, /dashboard,
+                              # /dashboard/invoices, /dashboard/suppliers,
+                              # /dashboard/families(+[id])
+  src/components/           # sistema de diseño propio (ui + shell)
+  src/lib/                  # api.ts (cliente HTTP, 401 → login), auth-storage.ts, auth-context.tsx
   e2e/                      # specs Playwright (mockean la API con page.route,
                               # ancladas al origen de la API — ver nota en ISSUES.md TASK-0036)
   playwright.config.ts      # next start en :4123 tras build
 ```
 
-Módulos frontend planificados (Fase 3+): editar un alumno existente, CRUD
-de `Contract`, descarga real (fichero) del export RGPD (TASK-0039/0040).
+Módulos frontend aún fuera: Gmail OAuth y extracción real de PDF (TASK-0032/0031).
 
 ---
 
@@ -210,9 +213,11 @@ en proyectos Python nuevos a esta fecha.
 
 ### Autenticación (Fase 1)
 
-JWT propio (access + refresh), un solo `User` con `role` en vez de tablas
+JWT propio (access token, 15 min). Un solo `User` con `role` en vez de tablas
 separadas por rol — mismo patrón de auth para padres y staff, distinto solo
-en autorización.
+en autorización. Refresh token y cookies httpOnly se posponen a hosting real
+(documentado en [rules_and_invariants.md](rules_and_invariants.md)); la UX de
+caducidad es 401 → `/login?expired=1` (TASK-0049).
 
 ---
 

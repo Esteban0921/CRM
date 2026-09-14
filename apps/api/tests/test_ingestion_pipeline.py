@@ -62,6 +62,10 @@ def test_ingests_pdf_as_family_invoice_pending_review(db_session, tmp_path):
     assert invoice.family_id is None
     assert invoice.status.value == "pending_review"
     assert invoice.extracted_data["invoice_number"] == "INV-2026-001"
+    assert invoice.amount is not None
+    assert str(invoice.amount) == "45.00"
+    assert invoice.issue_date is not None
+    assert invoice.issue_date.isoformat() == "2026-09-01"
     assert invoice.confidence > 0
 
 
@@ -173,7 +177,7 @@ def test_matching_student_name_auto_links_but_still_needs_review(db_session, tmp
     assert invoice.status == FamilyInvoiceStatus.PENDING_REVIEW  # match no salta la revision
 
 
-def test_matched_invoice_notifies_the_familys_parents(db_session, tmp_path):
+def test_matched_invoice_does_not_notify_until_staff_publishes(db_session, tmp_path):
     family = Family(name="Familia Garcia")
     db_session.add(family)
     db_session.commit()
@@ -207,8 +211,9 @@ def test_matched_invoice_notifies_the_familys_parents(db_session, tmp_path):
 
     ingest_new_emails(client, db_session, storage_dir=tmp_path, sender=sender)
 
-    assert len(sender.sent) == 1
-    assert sender.sent[0].to == "padre@example.com"
+    assert sender.sent == []
+    invoice = db_session.query(FamilyInvoice).one()
+    assert invoice.status == FamilyInvoiceStatus.PENDING_REVIEW
 
 
 def test_zip_bomb_marks_email_as_failed_not_processed(db_session, tmp_path):

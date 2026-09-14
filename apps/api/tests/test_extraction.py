@@ -1,4 +1,12 @@
-from ingestion.extraction import ExtractionTemplate, extract_fields
+from datetime import date
+from decimal import Decimal
+
+from ingestion.extraction import (
+    ExtractionTemplate,
+    extract_fields,
+    parse_spanish_amount,
+    parse_spanish_date,
+)
 
 
 def test_generic_extraction_finds_common_fields():
@@ -42,3 +50,18 @@ def test_matching_template_gives_higher_confidence_than_generic():
 
     assert templated_result.invoice_number == "TB-9001"
     assert templated_result.confidence > generic_result.confidence
+
+
+def test_parse_spanish_amount_comma_decimal():
+    assert parse_spanish_amount("45,00") == Decimal("45.00")
+    assert parse_spanish_amount("1.234,56 EUR") == Decimal("1234.56")
+    assert parse_spanish_amount("45.00") == Decimal("45.00")
+    assert parse_spanish_amount(None) is None
+    assert parse_spanish_amount("no-es-un-importe") is None
+
+
+def test_parse_spanish_date_day_month_year():
+    assert parse_spanish_date("01/09/2026") == date(2026, 9, 1)
+    assert parse_spanish_date("1-9-26") == date(2026, 9, 1)
+    assert parse_spanish_date("2026-09-01") == date(2026, 9, 1)
+    assert parse_spanish_date("ayer") is None

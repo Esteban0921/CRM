@@ -48,6 +48,7 @@ test('staff ve el listado de familias y crea una nueva', async ({ page }) => {
 
   await expect(page.getByText('Familia Garcia')).toBeVisible();
 
+  await page.getByRole('button', { name: 'Nueva familia' }).click();
   await page.getByLabel('Nombre').fill('Familia Nueva');
   await page.getByRole('button', { name: 'Añadir familia' }).click();
 
@@ -71,6 +72,9 @@ test('staff abre una familia, añade una nota y una tarea', async ({ page }) => 
       return;
     }
     await route.fulfill({ json: notes });
+  });
+  await page.route(`${API}/contracts*`, async (route) => {
+    await route.fulfill({ json: [] });
   });
   await page.route(`${API}/tasks*`, async (route) => {
     if (route.request().method() === 'POST') {
@@ -97,4 +101,37 @@ test('staff abre una familia, añade una nota y una tarea', async ({ page }) => 
   await page.getByPlaceholder('Nueva tarea').fill('Contactar por impago');
   await page.getByRole('button', { name: 'Añadir tarea' }).click();
   await expect(page.getByText('Contactar por impago')).toBeVisible();
+});
+
+test('staff descarga el export RGPD como fichero y no usa alert', async ({ page }) => {
+  await page.route(`${API}/families/${FAMILY.id}`, async (route) => {
+    await route.fulfill({ json: FAMILY });
+  });
+  await page.route(`${API}/students*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/contracts*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/notes*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/tasks*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/families/${FAMILY.id}/export`, async (route) => {
+    await route.fulfill({ json: { family: FAMILY, students: [] } });
+  });
+
+  const alerts: string[] = [];
+  page.on('dialog', (dialog) => {
+    alerts.push(dialog.message());
+    return dialog.dismiss();
+  });
+
+  await page.goto(`/dashboard/families/${FAMILY.id}`);
+  await page.getByRole('button', { name: 'Exportar datos (RGPD)' }).click();
+
+  await expect(page.getByText('Exportación descargada')).toBeVisible();
+  expect(alerts).toEqual([]);
 });

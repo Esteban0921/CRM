@@ -86,12 +86,15 @@ verificaron contra servicios reales — ver más abajo.
 - ✅ API: notas internas (`Note`) y tareas/recordatorios (`Task`) para staff.
 - ✅ API: exportación de datos de una familia (`GET /families/{id}/export`, RGPD).
 - ✅ Frontend: `/dashboard` (padre) lista sus `FamilyInvoice` reales; `/dashboard/invoices` (staff) es la cola de revisión (TASK-0035).
-- ✅ Frontend: `/dashboard/families` (alta/listado) y `/dashboard/families/[id]` (ficha con alumnos, notas, tareas, exportar/anonimizar RGPD) (TASK-0036/0037/0038).
+- ✅ Frontend: `/dashboard/families` (alta/listado) y `/dashboard/families/[id]` (ficha con alumnos, contratos, notas, tareas, exportar/anonimizar RGPD) (TASK-0036/0037/0038/0039/0040).
 - ✅ Frontend: `/dashboard/invoices` como tablero kanban por estado, inspirado en Huly (TASK-0042) — ver "Inspiración de diseño" más abajo.
-- ⏳ Frontend: editar un alumno ya creado, y cualquier pantalla de `Contract` (TASK-0039).
-- ⏳ Descarga real (fichero) del export RGPD — hoy vuelca a la consola del navegador (TASK-0040).
+- ✅ Frontend: asignar familia desde la tarjeta del kanban; el padre no ve facturas `pending_review` (TASK-0044, RULE-017).
+- ✅ Frontend: tablero de facturas de proveedor (TASK-0045).
+- ✅ Descarga del export RGPD como fichero JSON (TASK-0040).
+- ✅ Copiar `extracted_data` a `amount`/`issue_date` al ingerir (TASK-0043).
+- ✅ Sistema de diseño propio y home de staff con métricas (TASK-0047).
+- ✅ Ingesta de prueba desde la UI; aviso a la familia al publicar, no al ingerir (TASK-0048).
 - ⏳ Exportación CSV/Excel de la vista filtrada de facturas (uso administrativo masivo, distinto del export RGPD).
-- ⏳ Copiar los campos extraídos (`extracted_data`) a las columnas estructuradas `amount`/`issue_date` de la factura (TASK-0043).
 
 ### Inspiración de diseño (2026-08-26): Huly, solo en superficie
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from ingestion.classification import classify_document
-from ingestion.extraction import extract_fields
+from ingestion.extraction import extract_fields, parse_spanish_amount, parse_spanish_date
 from ingestion.gmail_client import GmailClient, RawAttachment
 from ingestion.matching import match_student_by_name_in_text
 from ingestion.safe_zip import UnsafeArchiveError, safe_extract_zip
@@ -19,8 +19,7 @@ from models.email import Email, EmailProcessingStatus
 from models.family_invoice import FamilyInvoice
 from models.supplier import Supplier
 from models.supplier_invoice import SupplierInvoice
-from notifications.email_sender import EmailSender, NoOpEmailSender
-from notifications.service import notify_new_family_invoice
+from notifications.email_sender import EmailSender
 
 
 @dataclass
@@ -39,12 +38,13 @@ def ingest_new_emails(
 ) -> IngestionSummary:
     """Orquesta la ingesta (spec original sección 6). `client` puede ser
     `FakeGmailClient` (credenciales simuladas) o, más adelante, uno real: el
-    contrato es el mismo, este orquestador no cambia. `sender` es
-    `NoOpEmailSender` por defecto (TASK-0015): sin SMTP configurado, la
-    ingesta sigue funcionando, simplemente no avisa a nadie.
+    contrato es el mismo, este orquestador no cambia.
+
+    `sender` se ignora a propósito (TASK-0048 / RULE-017): el aviso a la
+    familia sale cuando staff publica la factura, no cuando el adjunto llega.
     """
+    _ = sender
     scanner = scanner or NoOpScanner()
-    sender = sender or NoOpEmailSender()
     storage = Path(storage_dir)
     storage.mkdir(parents=True, exist_ok=True)
     summary = IngestionSummary()
@@ -82,7 +82,6 @@ def ingest_new_emails(
                     attachment=attachment,
                     storage=storage,
                     scanner=scanner,
-                    sender=sender,
                     known_supplier_addresses=known_supplier_addresses,
                 )
             email.processing_status = EmailProcessingStatus.PROCESSED
@@ -106,7 +105,6 @@ def _process_attachment(
     attachment: RawAttachment,
     storage: Path,
     scanner: AttachmentScanner,
-    sender: EmailSender,
     known_supplier_addresses: set[str],
 ) -> None:
     if attachment.filename.lower().endswith(".zip"):
@@ -116,7 +114,6 @@ def _process_attachment(
             attachment=attachment,
             storage=storage,
             scanner=scanner,
-            sender=sender,
             known_supplier_addresses=known_supplier_addresses,
         )
         return
@@ -129,7 +126,6 @@ def _process_attachment(
         mime_type=attachment.mime_type,
         storage=storage,
         scanner=scanner,
-        sender=sender,
         is_zip_member=False,
         parent_zip_id=None,
         known_supplier_addresses=known_supplier_addresses,
@@ -143,7 +139,6 @@ def _process_zip_attachment(
     attachment: RawAttachment,
     storage: Path,
     scanner: AttachmentScanner,
-    sender: EmailSender,
     known_supplier_addresses: set[str],
 ) -> None:
     with tempfile.TemporaryDirectory() as tmp:
@@ -172,7 +167,6 @@ def _process_zip_attachment(
                 mime_type="application/octet-stream",
                 storage=storage,
                 scanner=scanner,
-                sender=sender,
                 is_zip_member=True,
                 parent_zip_id=zip_doc.id,
                 known_supplier_addresses=known_supplier_addresses,
@@ -188,7 +182,6 @@ def _store_and_classify(
     mime_type: str,
     storage: Path,
     scanner: AttachmentScanner,
-    sender: EmailSender,
     is_zip_member: bool,
     parent_zip_id: uuid.UUID | None,
     known_supplier_addresses: set[str],
@@ -230,7 +223,7 @@ def _store_and_classify(
         # (pypdf/pdfplumber, spec original) se conecta con muestras reales.
         text = content.decode("utf-8", errors="ignore")
         fields = extract_fields(text)
-        _create_invoice_record(db, document, doc_type, fields, text, sender)
+        _create_invoice_record(db, document, doc_type, fields, text)
 
 
 def _create_invoice_record(
@@ -239,7 +232,6 @@ def _create_invoice_record(
     doc_type: DocumentType,
     fields,
     text: str,
-    sender: EmailSender,
 ) -> None:
     extracted_data = {
         "invoice_number": fields.invoice_number,
@@ -247,28 +239,32 @@ def _create_invoice_record(
         "total_amount": fields.total_amount,
         "tax_id": fields.tax_id,
     }
+    amount = parse_spanish_amount(fields.total_amount)
+    issue_date = parse_spanish_date(fields.issue_date)
     if doc_type == DocumentType.FAMILY_INVOICE:
         # TASK-0030: intenta enlazar automaticamente por nombre de alumno.
         # Aunque haya match, status sigue pending_review — el auto-match
         # ahorra trabajo a staff, no sustituye la revision humana (RULE-015).
+        # TASK-0048 / RULE-017: no se notifica aqui; el padre no debe saber
+        # de una factura que todavia no puede ver.
         family_id, student_id = match_student_by_name_in_text(db, text)
         invoice = FamilyInvoice(
             document_id=document.id,
             family_id=family_id,
             student_id=student_id,
+            amount=amount,
+            issue_date=issue_date,
             extracted_data=extracted_data,
             confidence=fields.confidence,
         )
         db.add(invoice)
         db.flush()
-        # TASK-0015: avisa aunque siga pending_review — mejor que la familia
-        # se entere y espere revisión a que no se entere de nada (spec
-        # original era un dashboard "pull-only", sin ningún aviso).
-        notify_new_family_invoice(db, sender, invoice)
     else:
         db.add(
             SupplierInvoice(
                 document_id=document.id,
+                amount=amount,
+                issue_date=issue_date,
                 extracted_data=extracted_data,
                 confidence=fields.confidence,
             )

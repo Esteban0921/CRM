@@ -11,7 +11,7 @@ pnpm-debug.log*
 # Python
 __pycache__/
 *.py[cod]
-.venv/
+.venv*/
 venv/
 .pytest_cache/
 .ruff_cache/
@@ -44,3 +44,6 @@ postgres-data/
 
 # Adjuntos ingeridos (POST /ingestion/run), ver ATTACHMENTS_DIR
 apps/api/data/
+
+# Previsualizaciones generadas por herramientas
+.grok-preview/

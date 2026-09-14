@@ -10,6 +10,8 @@ from models.audit_log import AuditedEntityType
 from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
 from models.user import User, UserRole
+from notifications.email_sender import EmailSender, get_email_sender
+from notifications.service import notify_new_family_invoice
 from schemas.family_invoice import FamilyInvoiceRead, FamilyInvoiceUpdate
 
 router = APIRouter(prefix="/family-invoices", tags=["family-invoices"])
@@ -44,7 +46,11 @@ def list_family_invoices(
     if user.role == UserRole.PARENT:
         if user.family_id is None:
             return []
-        query = query.filter(FamilyInvoice.family_id == user.family_id)
+        # RULE-017: el padre no ve facturas que staff todavía no ha revisado.
+        query = query.filter(
+            FamilyInvoice.family_id == user.family_id,
+            FamilyInvoice.status != FamilyInvoiceStatus.PENDING_REVIEW,
+        )
     if invoice_status is not None:
         query = query.filter(FamilyInvoice.status == invoice_status)
     # Cola de revision (TASK-0014): confianza mas baja primero.
@@ -62,6 +68,8 @@ def get_family_invoice(
     if invoice is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
     ensure_family_access(user, invoice.family_id)
+    if user.role == UserRole.PARENT and invoice.status == FamilyInvoiceStatus.PENDING_REVIEW:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
     return _with_family_names(db, [invoice])[0]
 
 
@@ -71,10 +79,12 @@ def update_family_invoice(
     payload: FamilyInvoiceUpdate,
     db: Session = Depends(get_db),
     staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+    sender: EmailSender = Depends(get_email_sender),
 ) -> FamilyInvoiceRead:
     invoice = db.get(FamilyInvoice, invoice_id)
     if invoice is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
+    previous_status = invoice.status
     changes = payload.model_dump(exclude_unset=True)
     before = {field: getattr(invoice, field) for field in changes}
     for field, value in changes.items():
@@ -89,4 +99,13 @@ def update_family_invoice(
     )
     db.commit()
     db.refresh(invoice)
+    published = (
+        previous_status == FamilyInvoiceStatus.PENDING_REVIEW
+        and invoice.status != FamilyInvoiceStatus.PENDING_REVIEW
+    )
+    if published:
+        try:
+            notify_new_family_invoice(db, sender, invoice)
+        except OSError:
+            pass
     return _with_family_names(db, [invoice])[0]

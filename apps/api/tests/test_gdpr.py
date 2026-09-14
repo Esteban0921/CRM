@@ -6,7 +6,7 @@ from models.contract import Contract
 from models.document import Document, DocumentType
 from models.email import Email
 from models.family import Family
-from models.family_invoice import FamilyInvoice
+from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
 from models.student import Student
 from models.user import User, UserRole
 from security import create_access_token, hash_password
@@ -68,6 +68,13 @@ def test_staff_can_export_full_family_data(client, db_session):
 
 def test_parent_can_export_own_family_data(client, db_session):
     family = _seed_full_family(db_session)
+    visible = db_session.query(FamilyInvoice).filter(FamilyInvoice.family_id == family.id).one()
+    visible.status = FamilyInvoiceStatus.SENT
+    still_pending = FamilyInvoice(
+        document_id=visible.document_id,
+        family_id=family.id,
+        status=FamilyInvoiceStatus.PENDING_REVIEW,
+    )
     parent = User(
         family_id=family.id,
         email="padre@example.com",
@@ -75,12 +82,14 @@ def test_parent_can_export_own_family_data(client, db_session):
         name="Padre",
         role=UserRole.PARENT,
     )
-    db_session.add(parent)
+    db_session.add_all([still_pending, parent])
     db_session.commit()
 
     response = client.get(f"/families/{family.id}/export", headers=_auth_header(parent))
 
     assert response.status_code == 200
+    assert len(response.json()["family_invoices"]) == 1
+    assert response.json()["family_invoices"][0]["status"] == "sent"
 
 
 def test_parent_cannot_export_another_familys_data(client, db_session):
