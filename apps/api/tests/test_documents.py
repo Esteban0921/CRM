@@ -11,17 +11,19 @@ def _auth_header(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _stored_invoice(db_session, tmp_path, *, family_id, status):
-    path = tmp_path / "factura.pdf"
-    path.write_bytes(b"%PDF-demo")
-    email = Email(gmail_id="doc-mail")
+def _stored_invoice(
+    db_session, storage, *, family_id, status, name="factura.pdf", body=b"%PDF-demo"
+):
+    path = storage / name
+    path.write_bytes(body)
+    email = Email(gmail_id=f"doc-mail-{name}")
     db_session.add(email)
     db_session.commit()
     document = Document(
         email_id=email.id,
         document_type=DocumentType.FAMILY_INVOICE,
         file_path=str(path),
-        original_filename="factura.pdf",
+        original_filename=name,
         mime_type="application/pdf",
     )
     db_session.add(document)
@@ -32,12 +34,12 @@ def _stored_invoice(db_session, tmp_path, *, family_id, status):
     return document, invoice
 
 
-def test_staff_can_download_invoice_file(client, db_session, tmp_path):
+def test_staff_can_download_invoice_file(client, db_session, attachments_dir):
     family = Family(name="Familia Doc")
     db_session.add(family)
     db_session.commit()
     document, _invoice = _stored_invoice(
-        db_session, tmp_path, family_id=family.id, status=FamilyInvoiceStatus.PENDING_REVIEW
+        db_session, attachments_dir, family_id=family.id, status=FamilyInvoiceStatus.PENDING_REVIEW
     )
     staff = User(
         email="staff-doc@example.com",
@@ -55,12 +57,12 @@ def test_staff_can_download_invoice_file(client, db_session, tmp_path):
     assert "factura.pdf" in response.headers.get("content-disposition", "")
 
 
-def test_parent_can_download_published_own_invoice(client, db_session, tmp_path):
+def test_parent_can_download_published_own_invoice(client, db_session, attachments_dir):
     family = Family(name="Familia Doc 2")
     db_session.add(family)
     db_session.commit()
     document, _invoice = _stored_invoice(
-        db_session, tmp_path, family_id=family.id, status=FamilyInvoiceStatus.SENT
+        db_session, attachments_dir, family_id=family.id, status=FamilyInvoiceStatus.SENT
     )
     parent = User(
         family_id=family.id,
@@ -78,12 +80,12 @@ def test_parent_can_download_published_own_invoice(client, db_session, tmp_path)
     assert response.content == b"%PDF-demo"
 
 
-def test_parent_cannot_download_pending_review_file(client, db_session, tmp_path):
+def test_parent_cannot_download_pending_review_file(client, db_session, attachments_dir):
     family = Family(name="Familia Doc 3")
     db_session.add(family)
     db_session.commit()
     document, _invoice = _stored_invoice(
-        db_session, tmp_path, family_id=family.id, status=FamilyInvoiceStatus.PENDING_REVIEW
+        db_session, attachments_dir, family_id=family.id, status=FamilyInvoiceStatus.PENDING_REVIEW
     )
     parent = User(
         family_id=family.id,
@@ -100,13 +102,13 @@ def test_parent_cannot_download_pending_review_file(client, db_session, tmp_path
     assert response.status_code == 404
 
 
-def test_parent_cannot_download_other_family_file(client, db_session, tmp_path):
+def test_parent_cannot_download_other_family_file(client, db_session, attachments_dir):
     family_a = Family(name="A")
     family_b = Family(name="B")
     db_session.add_all([family_a, family_b])
     db_session.commit()
     document, _invoice = _stored_invoice(
-        db_session, tmp_path, family_id=family_a.id, status=FamilyInvoiceStatus.SENT
+        db_session, attachments_dir, family_id=family_a.id, status=FamilyInvoiceStatus.SENT
     )
     parent = User(
         family_id=family_b.id,
@@ -189,7 +191,7 @@ def test_document_download_rejects_relative_path_escape(client, db_session, tmp_
         email_id=email.id,
         document_type=DocumentType.FAMILY_INVOICE,
         file_path="../secret.pdf",
-        original_filename="factura.pdf",
+        original_filename="secret.pdf",
         mime_type="application/pdf",
     )
     db_session.add(document)

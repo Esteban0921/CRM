@@ -25,27 +25,27 @@ def _storage_root() -> Path:
 
 
 def _existing_file(document: Document) -> Path:
-    stored = Path(document.file_path)
+    """Sirve exclusivamente el fichero que dice la fila, y solo si esta dentro
+    de `ATTACHMENTS_DIR`.
+
+    Antes habia dos fallbacks por nombre base -uno de ellos sobre
+    `original_filename`, que lo controla integramente quien manda el correo-.
+    Si el fichero propio desaparecia (cuarentena del antivirus, limpieza), la
+    API devolvia los bytes de otro documento con el mismo nombre: autorizacion
+    correcta, contenido de otra familia. Ademas la contencion solo se evaluaba
+    para rutas relativas, y el pipeline guarda siempre rutas absolutas, con lo
+    que no se aplicaba nunca (TASK-0091, RULE-005).
+    """
     storage = _storage_root().resolve()
-    candidates: list[Path] = []
-    if stored.is_absolute():
-        candidates.append(stored)
-    else:
-        candidates.append(storage / stored)
-        candidates.append(storage / stored.name)
-    if document.original_filename:
-        candidates.append(storage / Path(document.original_filename).name)
-    for candidate in candidates:
-        try:
-            resolved = candidate.resolve()
-        except OSError:
-            continue
-        if not resolved.is_file():
-            continue
-        if not stored.is_absolute() and not resolved.is_relative_to(storage):
-            continue
-        return resolved
-    raise HTTPException(status.HTTP_404_NOT_FOUND, "Fichero no disponible")
+    stored = Path(document.file_path)
+    candidate = stored if stored.is_absolute() else storage / stored
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Fichero no disponible") from None
+    if not resolved.is_relative_to(storage) or not resolved.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Fichero no disponible")
+    return resolved
 
 
 @router.get("", response_model=list[DocumentRead])

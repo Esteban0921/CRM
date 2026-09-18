@@ -7,6 +7,7 @@ from audit import record_field_changes
 from db import get_db
 from dependencies import ensure_family_access, get_current_user, require_role
 from models.audit_log import AuditedEntityType
+from models.family import Family
 from models.student import Student
 from models.user import User, UserRole
 from schemas.student import StudentCreate, StudentRead, StudentUpdate
@@ -20,6 +21,11 @@ def create_student(
     db: Session = Depends(get_db),
     _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
 ) -> Student:
+    # Sin esto el INSERT revienta contra la FK y el 500 arrastra la
+    # sentencia y sus parametros -nombre, fecha de nacimiento y colegio del
+    # menor- al log (RULE-015, TASK-0093).
+    if db.get(Family, payload.family_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Familia no encontrada")
     student = Student(**payload.model_dump())
     db.add(student)
     db.commit()

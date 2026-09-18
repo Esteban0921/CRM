@@ -11,11 +11,16 @@ def _engine_kwargs(url: str) -> dict:
     colgada decenas de segundos (el TCP retry de Windows). Los tests usan su
     propio engine SQLite en conftest, no este.
     """
+    # hide_parameters: sin esto SQLAlchemy adjunta la sentencia Y los parametros
+    # al mensaje de la excepcion, asi que un INSERT fallido de `students` imprime
+    # el nombre, la fecha de nacimiento y el colegio de un menor en el log
+    # (RULE-015, TASK-0093).
+    base = {"hide_parameters": True}
     if url.startswith("sqlite"):
-        return {"connect_args": {"check_same_thread": False}}
+        return {**base, "connect_args": {"check_same_thread": False}}
     if "postgres" in url:
-        return {"pool_pre_ping": True, "connect_args": {"connect_timeout": 3}}
-    return {"pool_pre_ping": True}
+        return {**base, "pool_pre_ping": True, "connect_args": {"connect_timeout": 3}}
+    return {**base, "pool_pre_ping": True}
 
 
 engine = create_engine(settings.database_url, **_engine_kwargs(settings.database_url))

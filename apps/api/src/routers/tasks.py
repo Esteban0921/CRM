@@ -33,6 +33,8 @@ def create_task(
     db: Session = Depends(get_db),
     staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
 ) -> TaskRead:
+    if payload.family_id is not None and db.get(Family, payload.family_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Familia no encontrada")
     task = Task(**payload.model_dump(), created_by=staff.id)
     db.add(task)
     db.commit()

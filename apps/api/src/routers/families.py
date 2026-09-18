@@ -3,9 +3,10 @@ from collections import defaultdict
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, false, or_
 from sqlalchemy.orm import Session
 
-from audit import record_field_changes
+from audit import record_field_changes, record_redaction, redact_existing_audit_trail
 from billing import (
     invoice_amount,
     invoice_is_due_soon,
@@ -311,37 +312,53 @@ def anonymize_family(
     if family is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Familia no encontrada")
 
-    before = {"name": family.name, "address": family.address, "status": family.status}
     family.name = f"Familia anonimizada {family.id}"
     family.address = None
     family.status = FamilyStatus.INACTIVE
-    record_field_changes(
+    record_redaction(
         db,
         entity_type=AuditedEntityType.FAMILY,
         entity_id=family.id,
         editor_id=staff.id,
-        before=before,
-        after={"name": family.name, "address": None, "status": family.status},
+        field_names=["name", "address", "status"],
     )
 
-    for student in db.query(Student).filter(Student.family_id == family_id).all():
-        student_before = {
-            "name": student.name,
-            "birth_date": student.birth_date,
-            "school": student.school,
-        }
+    students = db.query(Student).filter(Student.family_id == family_id).all()
+    for student in students:
         student.name = f"Alumno anonimizado {student.id}"
         student.birth_date = None
         student.school = None
         student.status = StudentStatus.INACTIVE
-        record_field_changes(
+        record_redaction(
             db,
             entity_type=AuditedEntityType.STUDENT,
             entity_id=student.id,
             editor_id=staff.id,
-            before=student_before,
-            after={"name": student.name, "birth_date": None, "school": None},
+            field_names=["name", "birth_date", "school"],
         )
+
+    # El historial anterior tambien es una copia de los datos del menor: si no
+    # se pisa, `/families/{id}/activity` sigue devolviendo nombre, fecha de
+    # nacimiento y colegio despues de la supresion (TASK-0092).
+    redact_existing_audit_trail(db, entity_type=AuditedEntityType.FAMILY, entity_ids=[family.id])
+    redact_existing_audit_trail(
+        db,
+        entity_type=AuditedEntityType.STUDENT,
+        entity_ids=[student.id for student in students],
+    )
+
+    # Las notas internas son texto libre escrito por staff sobre la familia:
+    # nada garantiza que no contengan datos personales, asi que se borran.
+    student_ids = [student.id for student in students]
+    db.query(Note).filter(
+        or_(
+            and_(Note.entity_type == NoteEntityType.FAMILY, Note.entity_id == family.id),
+            and_(
+                Note.entity_type == NoteEntityType.STUDENT,
+                Note.entity_id.in_(student_ids) if student_ids else false(),
+            ),
+        )
+    ).delete(synchronize_session=False)
 
     for member in db.query(User).filter(User.family_id == family_id).all():
         member.email = f"anonimizado-{member.id}@example.invalid"

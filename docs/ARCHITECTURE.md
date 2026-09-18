@@ -167,19 +167,23 @@ Módulos frontend aún fuera: Gmail OAuth y extracción real de PDF (TASK-0032/0
 
 ## Variables de entorno
 
-| Variable                          | Usada por      | Desde                                              | Por defecto                                                  |
-| --------------------------------- | -------------- | -------------------------------------------------- | ------------------------------------------------------------ |
-| API_PORT                          | apps/api       | ahora                                              | 8000                                                         |
-| CORS_ORIGIN                       | apps/api       | ahora                                              | http://localhost:3000                                        |
-| NEXT_PUBLIC_API_URL               | apps/web       | reservada                                          | http://localhost:8000                                        |
-| E2E_PORT                          | apps/web (E2E) | opcional                                           | 4123                                                         |
-| DATABASE_URL                      | apps/api       | ahora, verificado contra Postgres real (TASK-0009) | postgresql+psycopg://crm:crm@localhost:5432/crm_transporte   |
-| REDIS_URL                         | apps/api       | Fase 2                                             | -                                                            |
-| JWT_SECRET / JWT_EXPIRES_MINUTES  | apps/api       | ahora                                              | valor de desarrollo — RULE-006: cambiar en todo entorno real |
-| GMAIL_*                           | apps/api       | Fase 2                                             | -                                                            |
-| SMTP_*                            | apps/api       | Fase 4, verificado contra Mailpit real (TASK-0034) | Mailpit en desarrollo                                        |
-| CLAMAV host/port (`ClamdScanner`) | apps/api       | Fase 2, verificado contra ClamAV real (TASK-0033)  | localhost:3310 (servicio `clamav` en docker-compose.yml)     |
-| ATTACHMENTS_DIR                   | apps/api       | Fase 2 (TASK-0041)                                 | ./data/attachments (gitignored)                              |
+| Variable                                                                     | Usada por      | Desde                                              | Por defecto                                                                    |
+| ---------------------------------------------------------------------------- | -------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| APP_ENV                                                                      | apps/api       | ahora (TASK-0088)                                  | development — con `production` el arranque exige JWT_SECRET propio             |
+| API_PORT                                                                     | apps/api       | declarada, sin efecto (TASK-0174)                  | 8000 — el puerto lo fija el CLI de uvicorn                                     |
+| CORS_ORIGINS                                                                 | apps/api       | ahora (TASK-0141)                                  | http://localhost:3000,http://127.0.0.1:3000                                    |
+| CORS_ORIGIN                                                                  | apps/api       | heredada, se fusiona con CORS_ORIGINS              | vacia                                                                          |
+| NEXT_PUBLIC_API_URL                                                          | apps/web       | ahora — la usa `src/lib/api.ts` en cada peticion   | http://localhost:8000                                                          |
+| E2E_PORT                                                                     | apps/web (E2E) | opcional                                           | 4123                                                                           |
+| DATABASE_URL                                                                 | apps/api       | ahora, verificado contra Postgres real (TASK-0009) | postgresql+psycopg://crm:crm@localhost:5432/crm_transporte                     |
+| REDIS_URL                                                                    | apps/api       | declarada, sin uso en el codigo (TASK-0174)        | -                                                                              |
+| JWT_SECRET / JWT_EXPIRES_MINUTES                                             | apps/api       | ahora                                              | valor de desarrollo — con APP_ENV=production el arranque falla si no se cambia |
+| LOGIN_MAX_ATTEMPTS / LOGIN_ATTEMPT_WINDOW_SECONDS                            | apps/api       | ahora (TASK-0094)                                  | 10 intentos / 300 s por (IP, email)                                            |
+| GMAIL_*                                                                      | apps/api       | Fase 2                                             | -                                                                              |
+| SMTP_*                                                                       | apps/api       | Fase 4, verificado contra Mailpit real (TASK-0034) | Mailpit en desarrollo                                                          |
+| CLAMAV host/port (`ClamdScanner`)                                            | apps/api       | Fase 2, verificado contra ClamAV real (TASK-0033)  | localhost:3310 (servicio `clamav` en docker-compose.yml)                       |
+| ATTACHMENTS_DIR                                                              | apps/api       | Fase 2 (TASK-0041)                                 | ./data/attachments (gitignored)                                                |
+| MAX_ATTACHMENT_BYTES / MAX_ATTACHMENTS_PER_EMAIL / MAX_EXTRACTION_TEXT_BYTES | apps/api       | ahora (TASK-0090, RULE-016)                        | 10 MB / 20 / 256 KB                                                            |
 
 Referencia canónica: `.env.example` en la raíz.
 
@@ -241,7 +245,11 @@ documento está en la cola.
 cierra la tarea de aviso. Un PATCH/bulk a `paid` hace lo mismo (TASK-0070).
 `GET /billing/month-report` (TASK-0072) lista por familia esperado, cobrado,
 deuda y si falta factura. El padre no recibe `extracted_data` (TASK-0074).
-La descarga de PDF con ruta relativa no puede salir de `ATTACHMENTS_DIR`.
+La descarga de PDF no puede salir de `ATTACHMENTS_DIR`, sea la ruta relativa
+o absoluta, y se sirve exclusivamente el fichero que apunta `file_path`: los
+dos fallbacks por nombre base -uno sobre `original_filename`, que lo controla
+quien manda el correo- devolvian los bytes de otro documento cuando el propio
+faltaba (TASK-0091).
 
 ### Deuda en el listado y avisos del padre
 
