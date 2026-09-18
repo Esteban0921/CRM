@@ -27,9 +27,10 @@ import {
   type FamilyInvoiceStatus,
 } from '@/lib/api';
 import { getStoredToken } from '@/lib/auth-storage';
-import { formatAmount, formatDate } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { cx } from '@/lib/cx';
-import { Badge } from '@/components/ui/badge';
+import { Badge, Chip } from '@/components/ui/badge';
+import { Money } from '@/components/ui/money';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
@@ -437,25 +438,41 @@ function InvoiceCard({
         {...attributes}
         className="flex min-w-0 flex-1 cursor-grab flex-col gap-2 p-3 active:cursor-grabbing"
       >
-        <p className="font-medium text-ink">{invoice.family_name ?? 'Sin asignar'}</p>
-        {invoice.possible_duplicate && <Badge tone="rose">Posible duplicado</Badge>}
-        {(invoice.days_in_queue ?? 0) >= 1 && (
-          <Badge tone="amber">
-            {invoice.days_in_queue} día{invoice.days_in_queue === 1 ? '' : 's'} en cola
-          </Badge>
-        )}
-        {(invoice.days_overdue ?? 0) >= 1 && (
-          <Badge tone="rose">
-            {invoice.days_overdue} día{invoice.days_overdue === 1 ? '' : 's'} de retraso
-          </Badge>
-        )}
-        <div className="flex items-center justify-between text-xs text-muted">
-          <span className="tabular">{formatAmount(invoice.amount, invoice.currency)}</span>
+        {/* El importe es el dato por el que se trabaja en una cola de cobro:
+            sube a primer nivel y la familia pasa a ser su etiqueta (TASK-0145). */}
+        <div className="flex items-baseline justify-between gap-2">
+          <Money
+            amount={invoice.amount}
+            currency={invoice.currency}
+            size="strong"
+            align="left"
+            tone={invoice.status === 'overdue' ? 'debt' : 'auto'}
+          />
+          <span className="text-xs text-muted">{formatDate(invoice.issue_date)}</span>
+        </div>
+        <p className="truncate text-sm font-medium text-ink-2">
+          {invoice.family_name ?? 'Sin asignar'}
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {invoice.possible_duplicate && <Badge tone="rose">Posible duplicado</Badge>}
+          {(invoice.days_overdue ?? 0) >= 1 && (
+            <Badge tone="rose">
+              {invoice.days_overdue} día{invoice.days_overdue === 1 ? '' : 's'} de retraso
+            </Badge>
+          )}
+          {/* Antiguedad y confianza son metadatos: contorno, para que dejen de
+              competir con el estado y con el importe (TASK-0146). */}
+          {(invoice.days_in_queue ?? 0) >= 1 && (
+            <Chip tone={(invoice.days_in_queue ?? 0) >= 7 ? 'amber' : 'slate'}>
+              {invoice.days_in_queue} día{invoice.days_in_queue === 1 ? '' : 's'} en cola
+            </Chip>
+          )}
           {invoice.confidence !== null && (
-            <Badge tone="amber">{Math.round(invoice.confidence * 100)}% confianza</Badge>
+            <Chip tone={invoice.confidence < 0.5 ? 'amber' : 'slate'}>
+              {Math.round(invoice.confidence * 100)}% confianza
+            </Chip>
           )}
         </div>
-        <p className="text-xs text-muted">{formatDate(invoice.issue_date)}</p>
         <div onPointerDown={(event) => event.stopPropagation()}>
           <DownloadDocumentButton documentId={invoice.document_id} label="Descargar PDF" />
         </div>

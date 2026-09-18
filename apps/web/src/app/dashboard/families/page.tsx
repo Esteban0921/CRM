@@ -6,9 +6,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { createFamily, getFamilies, ApiError, type Family } from '@/lib/api';
-import { formatAmount } from '@/lib/format';
 import { getStoredToken } from '@/lib/auth-storage';
 import { Badge } from '@/components/ui/badge';
+import { Money } from '@/components/ui/money';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -129,10 +129,33 @@ export default function FamiliesPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-line bg-canvas/80 text-muted">
               <tr>
-                <th className="px-4 py-3 font-medium">Nombre</th>
-                <th className="px-4 py-3 font-medium">Dirección</th>
-                <th className="px-4 py-3 font-medium">Cobro</th>
-                <th className="px-4 py-3 font-medium">Estado</th>
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-2xs font-semibold tracking-wide uppercase"
+                >
+                  Nombre
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-2xs font-semibold tracking-wide uppercase"
+                >
+                  Dirección
+                </th>
+                {/* Columna numerica: alineada a la derecha, si no las cifras
+                    salen dentadas y tres ordenes de magnitud se confunden
+                    (TASK-0145). */}
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-right text-2xs font-semibold tracking-wide uppercase"
+                >
+                  Cobro
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-2xs font-semibold tracking-wide uppercase"
+                >
+                  Estado
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -146,7 +169,10 @@ export default function FamiliesPage() {
                   return matchesName && (!onlyAttention || needsAttention);
                 })
                 .map((family) => (
-                  <tr key={family.id} className="border-b border-line last:border-0">
+                  <tr
+                    key={family.id}
+                    className="border-b border-line transition-colors last:border-0 hover:bg-brand-tint"
+                  >
                     <td className="px-4 py-3">
                       <Link
                         href={`/dashboard/families/${family.id}`}
@@ -156,25 +182,33 @@ export default function FamiliesPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-muted">{family.address ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      {family.unbilled ? (
-                        <Badge tone="amber">Sin facturar</Badge>
-                      ) : Number(family.overdue_amount ?? 0) > 0 ? (
-                        <span className="text-rose-700 tabular">
-                          {formatAmount(family.overdue_amount, family.currency)} vencida
-                        </span>
-                      ) : Number(family.outstanding_amount ?? 0) > 0 ? (
-                        <span className="tabular">
-                          {formatAmount(family.outstanding_amount, family.currency)}
-                        </span>
-                      ) : (
-                        <span className="text-muted">Al día</span>
-                      )}
+                    {/* Una familia puede estar sin facturar Y con deuda vencida a
+                        la vez: antes el primer caso tapaba el segundo y los 200 EUR
+                        vencidos desaparecian de la vista (TASK-0146). */}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        {family.unbilled && <Badge tone="amber">Sin facturar</Badge>}
+                        {Number(family.overdue_amount ?? 0) > 0 ? (
+                          <Money
+                            amount={family.overdue_amount}
+                            currency={family.currency}
+                            tone="debt"
+                          />
+                        ) : Number(family.outstanding_amount ?? 0) > 0 ? (
+                          <Money amount={family.outstanding_amount} currency={family.currency} />
+                        ) : family.unbilled ? null : (
+                          <span className="text-sm text-muted">Al día</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge tone={family.status === 'active' ? 'emerald' : 'slate'}>
-                        {family.status === 'active' ? 'Activa' : 'Inactiva'}
-                      </Badge>
+                      {/* Trece badges verdes identicos en columna son ruido a tiempo
+                          completo: el estado solo se pinta cuando dice algo. */}
+                      {family.status === 'active' ? (
+                        <span className="text-sm text-muted">Activa</span>
+                      ) : (
+                        <Badge tone="slate">Inactiva</Badge>
+                      )}
                     </td>
                   </tr>
                 ))}

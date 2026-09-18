@@ -248,7 +248,7 @@ function StaffHome({ name }: { name: string }) {
           </>
         }
       />
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
         <MetricCard
           label={`Esperado ${summary?.year_month ?? ''}`}
           value={summary ? formatAmount(summary.expected_amount, summary.currency) : '—'}
@@ -258,40 +258,48 @@ function StaffHome({ name }: { name: string }) {
           label="Cobrado este mes"
           value={summary ? formatAmount(summary.collected_amount, summary.currency) : '—'}
           href="/dashboard/invoices"
+          tone="ok"
         />
         <MetricCard
           label="Deuda vencida"
           value={summary ? formatAmount(summary.overdue_amount, summary.currency) : '—'}
           href="/dashboard/invoices"
           hint={summary ? `${summary.overdue_count} factura(s)` : undefined}
+          emphasis="hero"
+          tone="debt"
         />
         <MetricCard
           label="Vencen en 7 días"
           value={summary ? formatAmount(summary.due_soon_amount, summary.currency) : '—'}
           href="/dashboard/invoices"
           hint={summary ? `${summary.due_soon_count} factura(s)` : undefined}
+          tone="warn"
         />
       </div>
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
         <MetricCard
           label="Pendientes de revisión"
           value={summary ? String(summary.pending_review_count) : '—'}
           href="/dashboard/invoices"
+          emphasis="compact"
         />
         <MetricCard
           label="Familias en riesgo"
           value={summary ? String(summary.families_with_debt) : '—'}
           href="/dashboard/families"
+          emphasis="compact"
         />
         <MetricCard
           label="Tareas pendientes"
           value={summary ? String(summary.pending_tasks) : '—'}
           href="/dashboard/tasks"
+          emphasis="compact"
         />
         <MetricCard
           label="Correos fallidos"
           value={summary ? String(summary.failed_emails) : '—'}
           href="/dashboard/emails"
+          emphasis="compact"
         />
       </div>
       {unbilled.length > 0 && (
