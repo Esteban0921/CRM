@@ -76,18 +76,44 @@ def _with_family_names(
     ]
 
 
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 200
+
+# Cabecera con el total real, para que el cliente sepa cuanto queda sin cambiar
+# la forma de la respuesta (sigue siendo una lista: no rompe a nadie).
+TOTAL_HEADER = "X-Total-Count"
+
+
 @router.get("", response_model=list[FamilyInvoiceRead])
 def list_family_invoices(
+    response: Response,
     invoice_status: FamilyInvoiceStatus | None = Query(default=None, alias="status"),
     family_id: uuid.UUID | None = Query(default=None),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[FamilyInvoiceRead]:
+    """Listado paginado (TASK-0126, TASK-0113).
+
+    Antes devolvia la tabla entera: con 2.064 facturas eran 315 ms y 1,23 MB de
+    payload por peticion, perfectamente lineal, y el cuello no era Postgres
+    -0,39 ms de ejecucion- sino cargar todas las filas en el proceso Python y
+    pasarlas por Pydantic. Una empresa de 60 familias genera ~700 facturas al
+    ano.
+    """
     promote_overdue_invoices(db)
     query = _scoped_invoice_query(db, user, invoice_status, family_id)
     if query is None:
+        response.headers[TOTAL_HEADER] = "0"
         return []
-    invoices = query.order_by(FamilyInvoice.confidence.asc().nullsfirst()).all()
+    response.headers[TOTAL_HEADER] = str(query.order_by(None).count())
+    invoices = (
+        query.order_by(FamilyInvoice.confidence.asc().nullsfirst(), FamilyInvoice.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return _with_family_names(db, invoices, hide_extracted=user.role == UserRole.PARENT)
 
 

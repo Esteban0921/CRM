@@ -6,6 +6,10 @@ import { test, expect } from '@playwright/test';
 // termina en la misma ruta "/dashboard/families/{id}".
 const API = 'http://localhost:8000';
 
+// El listado va paginado por columna desde TASK-0126, asi que la URL lleva
+// `?status=...&limit=...`: la ruta tiene que aceptar la query.
+const INVOICES_ROUTE = /http:\/\/localhost:8000\/family-invoices(\?.*)?$/;
+
 const STAFF_ME = {
   id: '11111111-1111-1111-1111-111111111111',
   email: 'staff@example.com',
@@ -202,7 +206,7 @@ test('un padre no entra al listado de familias', async ({ page }) => {
       },
     });
   });
-  await page.route(`${API}/family-invoices`, async (route) => {
+  await page.route(INVOICES_ROUTE, async (route) => {
     await route.fulfill({ json: [] });
   });
 

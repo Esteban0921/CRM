@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -18,7 +18,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   bulkUpdateFamilyInvoices,
   getFamilies,
-  getFamilyInvoices,
+  getFamilyInvoicePage,
   runIngestion,
   updateFamilyInvoice,
   ApiError,
@@ -34,6 +34,7 @@ import {
   InvoiceFieldsEditor,
   type InvoiceFieldEdits,
 } from '@/components/invoices/invoice-fields-editor';
+import { FamilyPickerDialog } from '@/components/invoices/family-picker';
 import { Money } from '@/components/ui/money';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -42,6 +43,10 @@ import { Input, Select } from '@/components/ui/input';
 import { DownloadDocumentButton } from '@/components/ui/download-document';
 import { ExportCsvButton } from '@/components/ui/export-csv';
 import { useToast } from '@/components/ui/toast';
+
+/** Tamano de pagina por columna. Con 50 cabe una sesion de revision entera
+ *  sin que el tablero tenga que cargar el historico completo. */
+const PAGE_SIZE = 50;
 
 const COLUMNS: { status: FamilyInvoiceStatus; label: string; accent: string }[] = [
   { status: 'pending_review', label: 'Pendiente de revisión', accent: 'border-t-amber-400' },
@@ -65,28 +70,73 @@ export default function InvoiceReviewQueuePage() {
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
   const [onlyStale, setOnlyStale] = useState(false);
   const [focusFamilyId, setFocusFamilyId] = useState<string | null>(null);
+  const [totals, setTotals] = useState<Record<string, number>>({});
+  const [loadingMore, setLoadingMore] = useState<FamilyInvoiceStatus | null>(null);
+  const [pickerInvoice, setPickerInvoice] = useState<FamilyInvoice | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor),
   );
 
-  function reload() {
+  const reload = useCallback((familyId?: string | null) => {
     const token = getStoredToken();
     if (!token) return;
-    getFamilyInvoices(token)
-      .then(setInvoices)
+    // Una peticion por columna, acotada: antes se pedia la tabla entera y con
+    // 2.068 facturas eran 13,6 segundos hasta ver la primera tarjeta
+    // (TASK-0126).
+    Promise.all(
+      COLUMNS.map((column) =>
+        getFamilyInvoicePage(token, {
+          status: column.status,
+          familyId: familyId ?? undefined,
+          limit: PAGE_SIZE,
+        }).then((page) => ({ status: column.status, page })),
+      ),
+    )
+      .then((results) => {
+        setInvoices(results.flatMap((result) => result.page.items));
+        setTotals(Object.fromEntries(results.map((result) => [result.status, result.page.total])));
+      })
       .catch(() => setError('No se pudieron cargar las facturas'));
     getFamilies(token)
       .then(setFamilies)
       .catch(() => {});
-  }
-
-  useEffect(reload, []);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setFocusFamilyId(params.get('family_id'));
-  }, []);
+    const familyId = params.get('family_id');
+    setFocusFamilyId(familyId);
+    reload(familyId);
+  }, [reload]);
+
+  async function loadMore(status: FamilyInvoiceStatus) {
+    const token = getStoredToken();
+    if (!token || !invoices) return;
+    setLoadingMore(status);
+    try {
+      const loaded = invoices.filter((invoice) => invoice.status === status).length;
+      const page = await getFamilyInvoicePage(token, {
+        status,
+        familyId: focusFamilyId ?? undefined,
+        limit: PAGE_SIZE,
+        offset: loaded,
+      });
+      setInvoices((current) => {
+        const known = new Set((current ?? []).map((invoice) => invoice.id));
+        return [...(current ?? []), ...page.items.filter((invoice) => !known.has(invoice.id))];
+      });
+      setTotals((current) => ({ ...current, [status]: page.total }));
+    } catch {
+      notify('No se pudieron cargar mas facturas', 'error');
+    } finally {
+      setLoadingMore(null);
+    }
+  }
+
+  function openFamilyPicker(invoice: FamilyInvoice) {
+    setPickerInvoice(invoice);
+  }
 
   function toggleSelected(invoiceId: string) {
     setSelected((current) =>
@@ -233,7 +283,6 @@ export default function InvoiceReviewQueuePage() {
   }
 
   const visibleInvoices = (invoices ?? []).filter((invoice) => {
-    if (focusFamilyId && invoice.family_id !== focusFamilyId) return false;
     if (onlyUnassigned && invoice.family_id) return false;
     if (onlyStale && (invoice.days_in_queue ?? 0) < 7) return false;
     if (query.trim()) {
@@ -248,6 +297,19 @@ export default function InvoiceReviewQueuePage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Un unico dialogo para todo el tablero, en vez de un <select> con
+          todas las familias dentro de cada tarjeta (TASK-0126). */}
+      <FamilyPickerDialog
+        open={pickerInvoice !== null}
+        families={families}
+        currentFamilyId={pickerInvoice?.family_id ?? null}
+        invoiceLabel={pickerInvoice?.family_name ?? 'Sin asignar'}
+        onPick={(familyId) => {
+          if (pickerInvoice) assignFamily(pickerInvoice.id, familyId);
+          setPickerInvoice(null);
+        }}
+        onClose={() => setPickerInvoice(null)}
+      />
       <PageHeader
         title="Cola de revisión"
         description="Asigna familia y publica. El padre no ve nada en pendiente de revisión."
@@ -346,11 +408,13 @@ export default function InvoiceReviewQueuePage() {
                 key={column.status}
                 column={column}
                 invoices={visibleInvoices.filter((invoice) => invoice.status === column.status)}
-                families={families}
+                total={totals[column.status] ?? 0}
+                loadingMore={loadingMore === column.status}
+                onLoadMore={() => loadMore(column.status)}
                 selected={selected}
                 onToggleSelected={toggleSelected}
                 onMove={moveTo}
-                onAssignFamily={assignFamily}
+                onOpenFamilyPicker={openFamilyPicker}
                 onSaveFields={saveInvoiceFields}
               />
             ))}
@@ -359,9 +423,8 @@ export default function InvoiceReviewQueuePage() {
             {activeInvoice ? (
               <InvoiceCard
                 invoice={activeInvoice}
-                families={families}
                 onMove={moveTo}
-                onAssignFamily={assignFamily}
+                onOpenFamilyPicker={openFamilyPicker}
                 onSaveFields={saveInvoiceFields}
                 dragging
               />
@@ -376,20 +439,24 @@ export default function InvoiceReviewQueuePage() {
 function Column({
   column,
   invoices,
-  families,
+  total,
+  loadingMore,
+  onLoadMore,
   selected,
   onToggleSelected,
   onMove,
-  onAssignFamily,
+  onOpenFamilyPicker,
   onSaveFields,
 }: {
   column: { status: FamilyInvoiceStatus; label: string; accent: string };
   invoices: FamilyInvoice[];
-  families: Family[];
+  total: number;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   selected: string[];
   onToggleSelected: (invoiceId: string) => void;
   onMove: (invoiceId: string, nextStatus: FamilyInvoiceStatus) => void;
-  onAssignFamily: (invoiceId: string, familyId: string | null) => void;
+  onOpenFamilyPicker: (invoice: FamilyInvoice) => void;
   onSaveFields: (invoiceId: string, edits: InvoiceFieldEdits) => Promise<void>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.status });
@@ -405,9 +472,16 @@ function Column({
     >
       <div className="flex items-center justify-between px-1">
         <h2 className="text-sm font-medium text-ink">{column.label}</h2>
-        <span className="rounded-full bg-canvas px-2 text-xs text-muted">{invoices.length}</span>
+        {/* El contador es el total del servidor, no el de lo que hay cargado:
+            si no, una columna paginada mentiria sobre cuanto trabajo queda. */}
+        <span className="tabular rounded-full bg-canvas px-2 text-xs text-muted">
+          {invoices.length < total ? `${invoices.length} de ${total}` : total}
+        </span>
       </div>
-      <div className="flex flex-col gap-2">
+      {/* Altura acotada con scroll propio: el grid igualaba las alturas de las
+          cuatro columnas, asi que una columna larga estiraba la pagina a
+          443.093 px y dejaba las otras tres como un vacio blanco. */}
+      <div className="flex max-h-[calc(100vh-20rem)] flex-col gap-2 overflow-y-auto">
         {invoices.length === 0 ? (
           <p className="px-1 text-xs text-muted">Sin facturas</p>
         ) : (
@@ -415,14 +489,18 @@ function Column({
             <InvoiceCard
               key={invoice.id}
               invoice={invoice}
-              families={families}
               selected={selected.includes(invoice.id)}
               onToggleSelected={onToggleSelected}
               onMove={onMove}
-              onAssignFamily={onAssignFamily}
+              onOpenFamilyPicker={onOpenFamilyPicker}
               onSaveFields={onSaveFields}
             />
           ))
+        )}
+        {invoices.length < total && (
+          <Button variant="ghost" size="sm" onClick={onLoadMore} disabled={loadingMore}>
+            {loadingMore ? 'Cargando...' : `Cargar más (${total - invoices.length})`}
+          </Button>
         )}
       </div>
     </div>
@@ -431,20 +509,18 @@ function Column({
 
 function InvoiceCard({
   invoice,
-  families,
   selected = false,
   onToggleSelected,
   onMove,
-  onAssignFamily,
+  onOpenFamilyPicker,
   onSaveFields,
   dragging = false,
 }: {
   invoice: FamilyInvoice;
-  families: Family[];
   selected?: boolean;
   onToggleSelected?: (invoiceId: string) => void;
   onMove: (invoiceId: string, nextStatus: FamilyInvoiceStatus) => void;
-  onAssignFamily: (invoiceId: string, familyId: string | null) => void;
+  onOpenFamilyPicker: (invoice: FamilyInvoice) => void;
   onSaveFields: (invoiceId: string, edits: InvoiceFieldEdits) => Promise<void>;
   dragging?: boolean;
 }) {
@@ -525,19 +601,23 @@ function InvoiceCard({
             onSave={(edits) => onSaveFields(invoice.id, edits)}
           />
         </div>
-        <Select
-          aria-label={`Asignar familia de la factura de ${invoice.family_name ?? 'sin asignar'}`}
-          value={invoice.family_id ?? ''}
-          onChange={(event) => onAssignFamily(invoice.id, event.target.value || null)}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <option value="">Sin asignar</option>
-          {families.map((family) => (
-            <option key={family.id} value={family.id}>
-              {family.name}
-            </option>
-          ))}
-        </Select>
+        {/* Un boton, no un <select> con todas las familias dentro: ese select
+            por tarjeta era el 80% de los nodos del DOM del tablero
+            (TASK-0126). */}
+        <div onPointerDown={(event) => event.stopPropagation()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full justify-between"
+            aria-label={`Asignar familia de la factura de ${invoice.family_name ?? 'sin asignar'}`}
+            onClick={() => onOpenFamilyPicker(invoice)}
+          >
+            <span className="truncate">{invoice.family_name ?? 'Sin asignar'}</span>
+            <span aria-hidden className="text-muted">
+              Cambiar
+            </span>
+          </Button>
+        </div>
         <Select
           aria-label={`Cambiar estado de la factura de ${invoice.family_name ?? 'sin asignar'}`}
           value={invoice.status}

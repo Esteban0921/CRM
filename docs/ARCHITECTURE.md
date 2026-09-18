@@ -267,6 +267,15 @@ param y sigue viendo solo las suyas publicadas. La ficha lista esas facturas
 (TASK-0082). `POST /billing/unbilled/tasks` (TASK-0083) crea una tarea
 «Facturar el mes YYYY-MM» por hueco, sin duplicar las pendientes.
 
+`GET /family-invoices` esta paginado (TASK-0126): `limit` (por defecto 50,
+maximo 200) y `offset`, con el total real en la cabecera `X-Total-Count`, que
+va expuesta en CORS. La respuesta sigue siendo una lista, asi que nada se
+rompe por esto; lo que cambia es que ya no se descarga la tabla entera. El
+tablero pide una pagina POR COLUMNA y ofrece «Cargar mas»; las vistas de una
+sola familia piden el maximo. La paginacion se aplica siempre DESPUES del
+filtrado por familia, asi que un `offset` grande no puede asomar a las
+facturas de otra familia (RULE-005).
+
 ---
 
 ## Seguridad desde el principio

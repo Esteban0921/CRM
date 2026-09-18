@@ -37,7 +37,7 @@ test('un padre inicia sesión y ve su dashboard', async ({ page }) => {
       json: [{ kind: 'overdue', title: 'Facturas vencidas', href: '/dashboard', count: 1 }],
     });
   });
-  await page.route('**/family-invoices', async (route) => {
+  await page.route(/\/family-invoices(\?.*)?$/, async (route) => {
     await route.fulfill({
       json: [
         {

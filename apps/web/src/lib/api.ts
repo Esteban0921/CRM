@@ -27,6 +27,15 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const { data } = await requestWithHeaders<T>(path, options);
+  return data;
+}
+
+/** Igual que `request`, pero conserva las cabeceras de la respuesta. */
+async function requestWithHeaders<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<{ data: T; headers: Headers }> {
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
@@ -50,13 +59,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (response.status === 204) {
-    return undefined as T;
+    return { data: undefined as T, headers: response.headers };
   }
   const text = await response.text();
   if (!text) {
-    return undefined as T;
+    return { data: undefined as T, headers: response.headers };
   }
-  return JSON.parse(text) as T;
+  return { data: JSON.parse(text) as T, headers: response.headers };
 }
 
 export function login(email: string, password: string): Promise<TokenResponse> {
@@ -93,18 +102,57 @@ export interface FamilyInvoice {
   days_overdue?: number | null;
 }
 
+export interface Page<T> {
+  items: T[];
+  /** Total real en el servidor, no el de esta pagina. */
+  total: number;
+}
+
+/**
+ * Listado de una sola familia: la vista del padre y la ficha de staff.
+ *
+ * Pide el maximo que admite la API en vez del tamano de pagina por defecto:
+ * son vistas de UNA familia, y 200 facturas son mas de quince anos de cuota
+ * mensual. El tablero, que si puede tener miles, usa `getFamilyInvoicePage`.
+ */
 export function getFamilyInvoices(
   token: string,
   status?: FamilyInvoiceStatus,
   familyId?: string,
 ): Promise<FamilyInvoice[]> {
+  return getFamilyInvoicePage(token, { status, familyId, limit: 200 }).then((page) => page.items);
+}
+
+/**
+ * Pagina del listado, con el total que viene en `X-Total-Count` (TASK-0126).
+ *
+ * Antes se pedia la tabla entera: con 2.068 facturas eran 13,6 segundos hasta
+ * ver la primera tarjeta y 443.093 px de pagina. Si la cabecera no viene -los
+ * mocks de e2e no la ponen- se cae al tamano de la propia lista, que es lo
+ * correcto cuando no hay paginacion detras.
+ */
+export async function getFamilyInvoicePage(
+  token: string,
+  options: {
+    status?: FamilyInvoiceStatus;
+    familyId?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<Page<FamilyInvoice>> {
   const params = new URLSearchParams();
-  if (status) params.set('status', status);
-  if (familyId) params.set('family_id', familyId);
+  if (options.status) params.set('status', options.status);
+  if (options.familyId) params.set('family_id', options.familyId);
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.offset !== undefined) params.set('offset', String(options.offset));
   const query = params.toString() ? `?${params.toString()}` : '';
-  return request<FamilyInvoice[]>(`/family-invoices${query}`, {
+  const { data, headers } = await requestWithHeaders<FamilyInvoice[]>(`/family-invoices${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  const items = data ?? [];
+  const rawTotal = headers.get('X-Total-Count');
+  const total = rawTotal === null ? items.length : Number(rawTotal);
+  return { items, total: Number.isFinite(total) ? total : items.length };
 }
 
 /**

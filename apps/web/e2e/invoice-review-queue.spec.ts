@@ -4,6 +4,32 @@ import { test, expect } from '@playwright/test';
 // anclan al origen de la API, no a "**/family-invoices".
 const API = 'http://localhost:8000';
 
+// El listado va paginado por columna desde TASK-0126, asi que la URL lleva
+// `?status=...&limit=...`: la ruta tiene que aceptar la query.
+const INVOICES_ROUTE = /http:\/\/localhost:8000\/family-invoices(\?.*)?$/;
+
+/**
+ * El tablero pide una pagina POR COLUMNA (`?status=...&limit=50`), asi que el
+ * doble tiene que filtrar como el servidor: devolver la lista entera a las
+ * cuatro peticiones hacia que cada factura apareciera cuatro veces.
+ */
+async function routeInvoices(
+  page: import('@playwright/test').Page,
+  invoices: Record<string, unknown>[],
+) {
+  await page.route(INVOICES_ROUTE, async (route) => {
+    const status = new URL(route.request().url()).searchParams.get('status');
+    const items = status ? invoices.filter((invoice) => invoice.status === status) : invoices;
+    await route.fulfill({
+      json: items,
+      headers: {
+        'X-Total-Count': String(items.length),
+        'Access-Control-Expose-Headers': 'X-Total-Count',
+      },
+    });
+  });
+}
+
 const STAFF_ME = {
   id: '11111111-1111-1111-1111-111111111111',
   email: 'staff@example.com',
@@ -63,9 +89,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('staff ve las facturas organizadas en un tablero por estado', async ({ page }) => {
-  await page.route(`${API}/family-invoices`, async (route) => {
-    await route.fulfill({ json: [PENDING_INVOICE, PAID_INVOICE] });
-  });
+  await routeInvoices(page, [PENDING_INVOICE, PAID_INVOICE]);
 
   await page.goto('/dashboard/invoices');
 
@@ -82,9 +106,7 @@ test('staff ve las facturas organizadas en un tablero por estado', async ({ page
 
 test('staff puede cambiar el estado de una factura desde su tarjeta', async ({ page }) => {
   let patchedBody: Record<string, unknown> | null = null;
-  await page.route(`${API}/family-invoices`, async (route) => {
-    await route.fulfill({ json: [PENDING_INVOICE] });
-  });
+  await routeInvoices(page, [PENDING_INVOICE]);
   await page.route(`${API}/family-invoices/${PENDING_INVOICE.id}`, async (route) => {
     patchedBody = JSON.parse(route.request().postData() ?? '{}');
     await route.fulfill({ json: { ...PENDING_INVOICE, ...patchedBody } });
@@ -99,9 +121,7 @@ test('staff puede cambiar el estado de una factura desde su tarjeta', async ({ p
 test('staff puede asignar una familia a una factura sin enlazar', async ({ page }) => {
   const unlinked = { ...PENDING_INVOICE, family_id: null, family_name: null };
   let patchedBody: Record<string, unknown> | null = null;
-  await page.route(`${API}/family-invoices`, async (route) => {
-    await route.fulfill({ json: [unlinked] });
-  });
+  await routeInvoices(page, [unlinked]);
   await page.route(`${API}/family-invoices/${unlinked.id}`, async (route) => {
     patchedBody = JSON.parse(route.request().postData() ?? '{}');
     await route.fulfill({
@@ -110,17 +130,15 @@ test('staff puede asignar una familia a una factura sin enlazar', async ({ page 
   });
 
   await page.goto('/dashboard/invoices');
-  await page
-    .getByLabel('Asignar familia de la factura de sin asignar')
-    .selectOption(PENDING_INVOICE.family_id as string);
+  await page.getByLabel('Asignar familia de la factura de sin asignar').click();
+  await page.getByLabel('Buscar familia').fill('Garcia');
+  await page.getByRole('button', { name: 'Familia Garcia', exact: true }).click();
 
   await expect.poll(() => patchedBody?.family_id).toBe(PENDING_INVOICE.family_id);
 });
 
 test('sin facturas, el tablero lo dice claramente', async ({ page }) => {
-  await page.route(`${API}/family-invoices`, async (route) => {
-    await route.fulfill({ json: [] });
-  });
+  await routeInvoices(page, []);
 
   await page.goto('/dashboard/invoices');
 
@@ -129,9 +147,7 @@ test('sin facturas, el tablero lo dice claramente', async ({ page }) => {
 
 test('staff puede publicar varias facturas a la vez', async ({ page }) => {
   let bulkBody: Record<string, unknown> | null = null;
-  await page.route(`${API}/family-invoices`, async (route) => {
-    await route.fulfill({ json: [PENDING_INVOICE] });
-  });
+  await routeInvoices(page, [PENDING_INVOICE]);
   await page.route(`${API}/family-invoices/bulk`, async (route) => {
     bulkBody = JSON.parse(route.request().postData() ?? '{}');
     await route.fulfill({ json: { updated: 1, failed: [] } });
@@ -162,9 +178,7 @@ const INCOMPLETE_INVOICE = {
 };
 
 test('staff corrige el importe y la fecha de una factura mal extraida', async ({ page }) => {
-  await page.route(`${API}/family-invoices`, async (route) => {
-    await route.fulfill({ json: [INCOMPLETE_INVOICE] });
-  });
+  await routeInvoices(page, [INCOMPLETE_INVOICE]);
 
   let patched: Record<string, unknown> | null = null;
   await page.route(`${API}/family-invoices/${INCOMPLETE_INVOICE.id}`, async (route) => {
@@ -191,9 +205,7 @@ test('staff corrige el importe y la fecha de una factura mal extraida', async ({
 });
 
 test('no se publica una factura sin importe y se dice por que', async ({ page }) => {
-  await page.route(`${API}/family-invoices`, async (route) => {
-    await route.fulfill({ json: [INCOMPLETE_INVOICE] });
-  });
+  await routeInvoices(page, [INCOMPLETE_INVOICE]);
 
   await page.goto('/dashboard/invoices');
   await page
@@ -201,4 +213,44 @@ test('no se publica una factura sin importe y se dice por que', async ({ page })
     .selectOption('sent');
 
   await expect(page.getByText(/Indica el importe antes de publicar/)).toBeVisible();
+});
+
+// TASK-0126: el tablero pedia la tabla entera. Con 2.068 facturas la auditoria
+// midio 13.596 ms hasta la primera tarjeta, 167.801 nodos del DOM (134.420 de
+// ellos `<option>`, uno por familia y por tarjeta) y 443.093 px de pagina.
+test('el tablero carga por paginas y dice cuanto queda', async ({ page }) => {
+  const muchas = Array.from({ length: 50 }, (_, index) => ({
+    ...PENDING_INVOICE,
+    id: `00000000-0000-0000-0000-${String(index).padStart(12, '0')}`,
+    amount: `${10 + index}.00`,
+  }));
+
+  let offsetPedido: string | null = null;
+  await page.route(INVOICES_ROUTE, async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.get('status') !== 'pending_review') {
+      await route.fulfill({
+        json: [],
+        headers: { 'X-Total-Count': '0', 'Access-Control-Expose-Headers': 'X-Total-Count' },
+      });
+      return;
+    }
+    const offset = Number(params.get('offset') ?? '0');
+    if (offset > 0) offsetPedido = String(offset);
+    await route.fulfill({
+      json:
+        offset === 0
+          ? muchas
+          : [{ ...PENDING_INVOICE, id: 'zzzzzzzz-0000-0000-0000-000000000001', amount: '999.00' }],
+      headers: { 'X-Total-Count': '51', 'Access-Control-Expose-Headers': 'X-Total-Count' },
+    });
+  });
+
+  await page.goto('/dashboard/invoices');
+
+  await expect(page.getByText('50 de 51')).toBeVisible();
+  await page.getByRole('button', { name: 'Cargar más (1)' }).click();
+
+  await expect.poll(() => offsetPedido).toBe('50');
+  await expect(page.getByText(/999,00/)).toBeVisible();
 });
