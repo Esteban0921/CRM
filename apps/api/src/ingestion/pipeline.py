@@ -53,28 +53,51 @@ def ingest_new_emails(
     }
 
     for message_id in client.list_new_message_ids():
-        # Idempotencia (spec original): un mismo gmail_id nunca se procesa dos veces.
-        if db.query(Email).filter(Email.gmail_id == message_id).first():
+        # Idempotencia por EXITO, no por existencia (TASK-0118).
+        #
+        # Antes la guardia era "existe una fila con este gmail_id?". Un fallo
+        # transitorio -ClamAV arrancando, Postgres cayendo a mitad- dejaba el
+        # correo en `failed` y con eso bloqueaba su propio reintento para
+        # siempre: la factura no llegaba a la cola de nadie y no habia forma de
+        # recuperarla. `SPEC_ORIGINAL.md:178` prometia reintento.
+        existing = db.query(Email).filter(Email.gmail_id == message_id).first()
+        if existing is not None and existing.processing_status == EmailProcessingStatus.PROCESSED:
             summary.skipped_already_processed += 1
             continue
 
-        raw = client.get_message(message_id)
-        email = Email(
-            gmail_id=raw.gmail_id,
-            thread_id=raw.thread_id,
-            subject=raw.subject,
-            from_address=raw.from_address,
-            received_at=raw.received_at,
-            raw_headers=raw.headers or None,
-            body_plain=raw.body_plain,
-            body_html=raw.body_html,
-            labels=list(raw.labels),
-            processing_status=EmailProcessingStatus.PROCESSING,
-        )
-        db.add(email)
-        db.flush()
+        try:
+            raw = client.get_message(message_id)
+        except Exception as exc:  # noqa: BLE001 - un mensaje ilegible no aborta el lote
+            _mark_failed(db, message_id, str(exc))
+            client.apply_label(message_id, "AUTO/FAILED")
+            summary.failed.append(message_id)
+            continue
+
+        if existing is None:
+            email = Email(gmail_id=raw.gmail_id)
+            db.add(email)
+        else:
+            # Reintento: se reaprovecha la fila y se limpia lo que dejo el
+            # intento anterior, para no acumular documentos a medias.
+            email = existing
+            email.error_message = None
+            _discard_previous_attempt(db, email)
+
+        email.thread_id = raw.thread_id
+        email.subject = raw.subject
+        email.from_address = raw.from_address
+        email.received_at = raw.received_at
+        email.raw_headers = raw.headers or None
+        email.body_plain = raw.body_plain
+        email.body_html = raw.body_html
+        email.labels = list(raw.labels)
+        email.processing_status = EmailProcessingStatus.PROCESSING
 
         try:
+            # El flush entra en el try: antes quedaba fuera, asi que el
+            # IntegrityError del unique de gmail_id escapaba sin capturar,
+            # devolvia un 500 y abortaba el resto del lote (TASK-0119).
+            db.flush()
             for attachment in raw.attachments:
                 _process_attachment(
                     db=db,
@@ -94,24 +117,49 @@ def ingest_new_emails(
             client.apply_label(message_id, "AUTO/FAILED")
             summary.failed.append(message_id)
             db.commit()
-        except Exception as exc:
-            db.rollback()
-            failed = db.query(Email).filter(Email.gmail_id == message_id).first()
-            if failed is None:
-                failed = Email(
-                    gmail_id=message_id,
-                    processing_status=EmailProcessingStatus.FAILED,
-                    error_message=str(exc),
-                )
-                db.add(failed)
-            else:
-                failed.processing_status = EmailProcessingStatus.FAILED
-                failed.error_message = str(exc)
+        except Exception as exc:  # noqa: BLE001 - un correo roto no aborta el lote
+            _mark_failed(db, message_id, str(exc))
             client.apply_label(message_id, "AUTO/FAILED")
             summary.failed.append(message_id)
-            db.commit()
 
     return summary
+
+
+def _mark_failed(db: Session, message_id: str, error: str) -> None:
+    """Deja el correo en `failed` con su motivo, sin perder la fila."""
+    db.rollback()
+    failed = db.query(Email).filter(Email.gmail_id == message_id).first()
+    if failed is None:
+        failed = Email(
+            gmail_id=message_id,
+            processing_status=EmailProcessingStatus.FAILED,
+            error_message=error,
+        )
+        db.add(failed)
+    else:
+        failed.processing_status = EmailProcessingStatus.FAILED
+        failed.error_message = error
+    db.commit()
+
+
+def _discard_previous_attempt(db: Session, email: Email) -> None:
+    """Borra los documentos y facturas que dejo un intento fallido anterior.
+
+    Sin esto, reprocesar un correo que fallo a mitad duplicaria las facturas que
+    si se habian creado antes del fallo.
+    """
+    documents = db.query(Document).filter(Document.email_id == email.id).all()
+    if not documents:
+        return
+    document_ids = [document.id for document in documents]
+    db.query(FamilyInvoice).filter(FamilyInvoice.document_id.in_(document_ids)).delete(
+        synchronize_session=False
+    )
+    db.query(SupplierInvoice).filter(SupplierInvoice.document_id.in_(document_ids)).delete(
+        synchronize_session=False
+    )
+    db.query(Document).filter(Document.id.in_(document_ids)).delete(synchronize_session=False)
+    db.flush()
 
 
 def attachment_storage_path(storage: Path, filename: str, unique_id: uuid.UUID) -> Path:

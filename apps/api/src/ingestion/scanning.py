@@ -11,6 +11,10 @@ class ScanResult:
     detail: str = ""
 
 
+class ScannerUnavailableError(RuntimeError):
+    """El antivirus no puede dar un veredicto: se falla cerrado (RULE-016)."""
+
+
 class AttachmentScanner(Protocol):
     def scan(self, file_path: str | Path) -> ScanResult: ...
 
@@ -43,5 +47,41 @@ class ClamdScanner:
         client = clamd.ClamdNetworkSocket(host=self._host, port=self._port, timeout=self._timeout)
         with open(file_path, "rb") as handle:
             result = client.instream(handle)
+        # `instream` devuelve None mientras clamd esta arrancando y cargando
+        # firmas: sin esta comprobacion el `result["stream"]` lanzaba un
+        # TypeError opaco que quemaba el lote entero de correos con
+        # "'NoneType' object is not subscriptable" (TASK-0120).
+        if not isinstance(result, dict) or "stream" not in result:
+            raise ScannerUnavailableError(
+                "El antivirus respondio sin veredicto (probablemente aun esta "
+                "cargando las firmas). No se escanea a medias (RULE-016)."
+            )
         status, detail = result["stream"]
         return ScanResult(clean=status == "OK", detail=detail or status)
+
+
+def build_attachment_scanner() -> AttachmentScanner:
+    """Escaner real, o error claro si el daemon no esta listo (RULE-016).
+
+    `ping()` responde en cuanto existe el socket, pero clamd tarda minutos en
+    cargar las firmas (`start_period: 300s` en docker-compose.yml). En esa
+    ventana la instancia esta viva y es inutil, asi que se comprueba tambien
+    que responda una version (TASK-0120).
+    """
+    import clamd
+
+    from config import settings
+
+    try:
+        client = clamd.ClamdNetworkSocket(
+            host=settings.clamav_host, port=settings.clamav_port, timeout=3.0
+        )
+        client.ping()
+        client.version()
+    except Exception as exc:
+        raise ScannerUnavailableError(
+            "Antivirus (clamd) no disponible: no se puede escanear con seguridad "
+            "los adjuntos entrantes (RULE-016). Comprueba el servicio `clamav` "
+            "de docker-compose.yml."
+        ) from exc
+    return ClamdScanner(host=settings.clamav_host, port=settings.clamav_port)

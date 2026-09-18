@@ -53,6 +53,10 @@ def _payload() -> dict:
 def _mock_clamd_clean():
     mock_client = MagicMock()
     mock_client.instream.return_value = {"stream": ("OK", None)}
+    # `version()` forma parte de la comprobacion de readiness: `ping()` responde
+    # en cuanto existe el socket, pero clamd tarda minutos en cargar las firmas
+    # y en esa ventana el escaner esta vivo y es inutil (TASK-0120).
+    mock_client.version.return_value = "ClamAV 1.0.0"
     return mock_client
 
 
@@ -62,7 +66,7 @@ def test_staff_can_run_ingestion_and_it_creates_a_pending_family_invoice(client,
     mock_smtp.__enter__.return_value = mock_smtp
 
     with (
-        patch("routers.ingestion.clamd.ClamdNetworkSocket", return_value=_mock_clamd_clean()),
+        patch("clamd.ClamdNetworkSocket", return_value=_mock_clamd_clean()),
         patch("smtplib.SMTP", return_value=mock_smtp),
     ):
         response = client.post("/ingestion/run", json=_payload(), headers=_auth_header(staff))
@@ -80,7 +84,7 @@ def test_ingestion_still_succeeds_when_smtp_is_unreachable(client, db_session):
     staff = _staff(db_session)
 
     with (
-        patch("routers.ingestion.clamd.ClamdNetworkSocket", return_value=_mock_clamd_clean()),
+        patch("clamd.ClamdNetworkSocket", return_value=_mock_clamd_clean()),
         patch("smtplib.SMTP", side_effect=ConnectionRefusedError()),
     ):
         response = client.post("/ingestion/run", json=_payload(), headers=_auth_header(staff))
@@ -96,7 +100,7 @@ def test_ingestion_fails_closed_when_clamav_is_unreachable(client, db_session):
     """
     staff = _staff(db_session)
 
-    with patch("routers.ingestion.clamd.ClamdNetworkSocket", side_effect=ConnectionRefusedError()):
+    with patch("clamd.ClamdNetworkSocket", side_effect=ConnectionRefusedError()):
         response = client.post("/ingestion/run", json=_payload(), headers=_auth_header(staff))
 
     assert response.status_code == 503
@@ -124,7 +128,7 @@ def test_staff_can_run_demo_inbox(client, db_session):
     mock_smtp.__enter__.return_value = mock_smtp
 
     with (
-        patch("routers.ingestion.clamd.ClamdNetworkSocket", return_value=_mock_clamd_clean()),
+        patch("clamd.ClamdNetworkSocket", return_value=_mock_clamd_clean()),
         patch("smtplib.SMTP", return_value=mock_smtp),
     ):
         response = client.post(

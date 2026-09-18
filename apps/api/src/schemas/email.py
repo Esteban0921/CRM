@@ -17,3 +17,13 @@ class EmailRead(BaseModel):
     error_message: str | None
     created_at: datetime.datetime
     document_count: int = 0
+
+
+class ReprocessResult(BaseModel):
+    """Resultado de reintentar un correo fallido (TASK-0118)."""
+
+    gmail_id: str
+    processing_status: EmailProcessingStatus
+    error_message: str | None
+    reprocessed: bool
+    missing_attachments: list[str] = []

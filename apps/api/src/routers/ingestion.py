@@ -1,6 +1,5 @@
 import base64
 
-import clamd
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -11,33 +10,18 @@ from ingestion.demo import demo_inbox
 from ingestion.fake_gmail_client import FakeGmailClient
 from ingestion.gmail_client import RawAttachment, RawEmail
 from ingestion.pipeline import ingest_new_emails
-from ingestion.scanning import AttachmentScanner, ClamdScanner
+from ingestion.scanning import ScannerUnavailableError, build_attachment_scanner
 from models.user import User, UserRole
 from schemas.ingestion import IngestionRunRequest, IngestionRunResult
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
 
-def _build_scanner() -> AttachmentScanner:
-    """RULE-016: los adjuntos no confiables deben pasar por el antivirus real
-    (TASK-0033) antes de tratarse como una factura. Si el daemon no responde,
-    falla cerrado en vez de degradar en silencio a "sin escanear": un
-    servicio auxiliar caido no debe convertirse en una forma de saltarse un
-    control de seguridad nombrado explícitamente en AGENTS.md.
-    """
+def _scanner():
     try:
-        client = clamd.ClamdNetworkSocket(
-            host=settings.clamav_host, port=settings.clamav_port, timeout=3.0
-        )
-        client.ping()
-    except Exception as exc:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Antivirus (clamd) no disponible: no se puede escanear con seguridad "
-            "los adjuntos entrantes (RULE-016). Comprueba el servicio `clamav` "
-            "de docker-compose.yml.",
-        ) from exc
-    return ClamdScanner(host=settings.clamav_host, port=settings.clamav_port)
+        return build_attachment_scanner()
+    except ScannerUnavailableError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
 
 
 @router.post("/run", response_model=IngestionRunResult)
@@ -81,7 +65,7 @@ def run_ingestion(
         FakeGmailClient(inbox=inbox),
         db,
         storage_dir=settings.attachments_dir,
-        scanner=_build_scanner(),
+        scanner=_scanner(),
     )
     return IngestionRunResult(
         processed=summary.processed,
