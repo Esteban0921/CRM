@@ -215,8 +215,105 @@ de Fase 3 y cierre de RULE-017 en el ciclo de notificación. Detalle en
 | TASK-0048 | Ingesta demo desde UI + notificar al publicar (cierra RULE-017 en el correo)           | Agente      | Hecha  | 2026-09-14 | `use_demo_inbox`. El padre no recibe correo de una factura que aún no puede ver. Sin PR (TASK-0010). |
 | TASK-0049 | UX de sesión caducada: 401 → `/login?expired=1`                                        | Agente      | Hecha  | 2026-09-14 | No se alarga el JWT ni se añade refresh. Sin PR (TASK-0010).                                         |
 
+## Corrección 2026-09-15 — runtime local y bugs de API/UI
+
+Hallazgos al arrancar el stack sin Docker: `/health` mentía, `/auth/login` colgaba contra Postgres caído, el cliente rompía 204, staff podía crear `admin`, y la ingesta escribía adjuntos con el nombre que viniera del correo.
+
+| ID        | Título                                                                                           | Responsable | Estado | Cierre     | Refs / Notas                                                                                                                                                                                  |
+| --------- | ------------------------------------------------------------------------------------------------ | ----------- | ------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0050 | Health real, 503 si no hay DB, 204 en el cliente, staff no crea admin, path traversal en ingesta | Agente      | Hecha  | 2026-09-18 | Rama `fix/task-0050-runtime-and-ingestion-bugs`. También: ZIP persistido y escaneado antes de parsear; listado de familias muestra el error; padre redirigido fuera de `/dashboard/families`. |
+
+## Campaña 2026-09-15 — ciclo de cobro usable
+
+El CRM tenía cola y ficha, pero no se podía abrir el PDF, dar de alta un padre o un proveedor, ni ver la deuda. Primera oleada de producto (sin Gmail real ni CSV).
+
+| ID        | Título                                                                    | Responsable | Estado | Cierre     | Refs / Notas                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------- | ----------- | ------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0051 | Descargar el adjunto de una factura (`GET /documents/{id}/file`)          | Agente      | Hecha  | 2026-09-18 | Staff: cualquier documento. Padre: solo el de una `FamilyInvoice` suya ya publicada (RULE-005/017). Sin loguear el fichero (RULE-015).                            |
+| TASK-0052 | Alta de padres en la ficha + CRUD de proveedores                          | Agente      | Hecha  | 2026-09-18 | `POST/PATCH /suppliers`; `GET /users?family_id=`; UI en ficha y tablero de proveedor.                                                                             |
+| TASK-0053 | No publicar sin familia; deuda en ficha/home; recordatorio de vencimiento | Agente      | Hecha  | 2026-09-18 | PATCH 422 si sale de `pending_review` sin `family_id`. `due_date` a +30 días al publicar. `GET /billing/summary` y `GET /families/{id}/billing`. Mailpit si está. |
+
+## Campaña 2026-09-15 — encontrar, exportar y ver
+
+| ID        | Título                                                      | Responsable | Estado | Cierre     | Refs / Notas                                                                    |
+| --------- | ----------------------------------------------------------- | ----------- | ------ | ---------- | ------------------------------------------------------------------------------- |
+| TASK-0054 | Búsqueda global staff (`GET /search?q=`)                    | Agente      | Hecha  | 2026-09-18 | Familias, alumnos, facturas y proveedores. El padre no busca (RULE-015).        |
+| TASK-0055 | Export CSV de facturas a familia                            | Agente      | Hecha  | 2026-09-18 | `GET /family-invoices/export.csv`. Padre: solo las suyas publicadas (RULE-017). |
+| TASK-0056 | Línea de tiempo en la ficha (`GET /families/{id}/activity`) | Agente      | Hecha  | 2026-09-18 | Audit trail + notas. Solo staff.                                                |
+| TASK-0057 | Ver PDF en el navegador, no solo descargar                  | Agente      | Hecha  | 2026-09-18 | Mismo `GET /documents/{id}/file`; el cliente abre un visor.                     |
+
+## Campaña 2026-09-15 — operación diaria
+
+| ID        | Título                                                                | Responsable | Estado | Cierre     | Refs / Notas                                                                                |
+| --------- | --------------------------------------------------------------------- | ----------- | ------ | ---------- | ------------------------------------------------------------------------------------------- |
+| TASK-0058 | Pasar a `overdue` las facturas `sent` con `due_date` vencida          | Agente      | Hecha  | 2026-09-18 | Se aplica al listar/exportar/resumen. No notifica (el recordatorio sigue siendo a demanda). |
+| TASK-0059 | Bandeja global de tareas staff (`/dashboard/tasks`)                   | Agente      | Hecha  | 2026-09-18 | `GET /tasks` ya existía; se añade `family_name` y una cola de “qué hay que hacer hoy”.      |
+| TASK-0060 | Cola de notas de crédito (`GET /documents?document_type=credit_note`) | Agente      | Hecha  | 2026-09-18 | El clasificador ya las detecta; ahora staff las lista y abre el PDF. El padre no las ve.    |
+
+## Campaña 2026-09-15 — inteligencia operativa
+
+| ID        | Título                                                  | Responsable | Estado | Cierre     | Refs / Notas                                                                    |
+| --------- | ------------------------------------------------------- | ----------- | ------ | ---------- | ------------------------------------------------------------------------------- |
+| TASK-0061 | Cockpit del mes: esperado vs cobrado + vencen en 7 días | Agente      | Hecha  | 2026-09-18 | Extiende `GET /billing/summary`. Contratos activos vs facturas pagadas del mes. |
+| TASK-0062 | Familias en riesgo y duplicados de factura              | Agente      | Hecha  | 2026-09-18 | `GET /billing/at-risk`, `GET /family-invoices/duplicates`. Badge en el kanban.  |
+| TASK-0063 | Bandeja de correos ingeridos (`GET /emails`)            | Agente      | Hecha  | 2026-09-18 | Staff ve procesados/fallidos. El padre no.                                      |
+| TASK-0064 | Paleta de comandos Ctrl+K                               | Agente      | Hecha  | 2026-09-18 | Atajos + búsqueda sin salir de la pantalla.                                     |
+
+## Campaña 2026-09-15 — cerrar el mes y el cobro
+
+| ID        | Título                                                           | Responsable | Estado | Cierre     | Refs / Notas                                                                                        |
+| --------- | ---------------------------------------------------------------- | ----------- | ------ | ---------- | --------------------------------------------------------------------------------------------------- |
+| TASK-0065 | Huecos del mes: contratos activos sin factura                    | Agente      | Hecha  | 2026-09-15 | `GET /billing/unbilled` + `unbilled_families` en el resumen. Sin PR (TASK-0010).                    |
+| TASK-0066 | Campana de avisos staff (`GET /notifications/inbox`)             | Agente      | Hecha  | 2026-09-15 | Revisión, vencidas, 7 días, correos fallidos, huecos, «he pagado». Sin PR (TASK-0010).              |
+| TASK-0067 | Acciones masivas en la cola (`POST /family-invoices/bulk`)       | Agente      | Hecha  | 2026-09-15 | Asignar familia / publicar / marcar pagada a varias a la vez. Mismas reglas que el PATCH. Sin PR.   |
+| TASK-0068 | El padre indica «he pagado»                                      | Agente      | Hecha  | 2026-09-15 | `POST /family-invoices/{id}/claim-payment` crea una tarea. No cambia el estado. Sin PR (TASK-0010). |
+| TASK-0069 | Recordatorio a 7 días (`POST /notifications/due-soon-reminders`) | Agente      | Hecha  | 2026-09-15 | Mismo canal que el de vencidas; nunca `pending_review`. Sin PR (TASK-0010).                         |
+
+## Campaña 2026-09-15 — cerrar el cobro
+
+| ID        | Título                                                    | Responsable | Estado | Cierre     | Refs / Notas                                                                              |
+| --------- | --------------------------------------------------------- | ----------- | ------ | ---------- | ----------------------------------------------------------------------------------------- |
+| TASK-0070 | Al marcar pagada, cerrar la tarea de «he pagado»          | Agente      | Hecha  | 2026-09-15 | PATCH/bulk a `paid` cierra `Task` pendiente con `invoice:{id}`. Sin PR (TASK-0010).       |
+| TASK-0071 | Confirmar cobro en un clic (`POST .../confirm-payment`)   | Agente      | Hecha  | 2026-09-15 | Staff marca pagada y cierra el aviso. Padre 403. No aplica a `pending_review`. Sin PR.    |
+| TASK-0072 | Informe del mes por familia (`GET /billing/month-report`) | Agente      | Hecha  | 2026-09-15 | Esperado, cobrado, deuda, hueco. Solo staff. Sin PR (TASK-0010).                          |
+| TASK-0073 | UI: Confirmar cobro en tareas + tabla de cierre del mes   | Agente      | Hecha  | 2026-09-15 | Botón en `/dashboard/tasks` y filas en el home. Sin PR (TASK-0010).                       |
+| TASK-0074 | El padre no recibe `extracted_data` (RULE-015)            | Agente      | Hecha  | 2026-09-15 | Listado, detalle y export RGPD. Staff sí lo ve. PDF relativo no sale del almacén. Sin PR. |
+
+## Campaña 2026-09-15 — ver la deuda donde se trabaja
+
+| ID        | Título                                                    | Responsable | Estado | Cierre     | Refs / Notas                                                                  |
+| --------- | --------------------------------------------------------- | ----------- | ------ | ---------- | ----------------------------------------------------------------------------- |
+| TASK-0075 | Snapshot de cobro en `GET /families`                      | Agente      | Hecha  | 2026-09-15 | Deuda, vencido y hueco del mes en el listado. Solo staff. Sin PR (TASK-0010). |
+| TASK-0076 | Antigüedad en cola y días de retraso en la factura        | Agente      | Hecha  | 2026-09-15 | `days_in_queue` / `days_overdue` en el kanban. Sin PR (TASK-0010).            |
+| TASK-0077 | Avisos del padre (`GET /notifications/mine`)              | Agente      | Hecha  | 2026-09-15 | Solo vencidas y 7 días de su familia. Nunca `pending_review`. Sin PR.         |
+| TASK-0078 | CSV del cierre del mes (`GET /billing/month-report.csv`)  | Agente      | Hecha  | 2026-09-15 | Mismas filas que el informe. Solo staff. Sin PR (TASK-0010).                  |
+| TASK-0079 | UI: listado con deuda, campana del padre, exportar cierre | Agente      | Hecha  | 2026-09-15 | Familias, kanban y home. Sin PR (TASK-0010).                                  |
+
+## Campaña 2026-09-15 — trabajar desde la ficha y la cola
+
+| ID        | Título                                              | Responsable | Estado | Cierre     | Refs / Notas                                                                                |
+| --------- | --------------------------------------------------- | ----------- | ------ | ---------- | ------------------------------------------------------------------------------------------- |
+| TASK-0080 | Filtrar facturas por `family_id`                    | Agente      | Hecha  | 2026-09-15 | `GET /family-invoices?family_id=`. El padre ignora el param (RULE-005). Sin PR (TASK-0010). |
+| TASK-0081 | Facturas en la ficha de familia                     | Agente      | Hecha  | 2026-09-15 | Staff ve también `pending_review`. Confirmar cobro y PDF. Sin PR (TASK-0010).               |
+| TASK-0082 | Filtros en el kanban                                | Agente      | Hecha  | 2026-09-15 | Nombre, sin asignar, más de 7 días en cola. Sin PR (TASK-0010).                             |
+| TASK-0083 | Tareas de huecos (`POST /billing/unbilled/tasks`)   | Agente      | Hecha  | 2026-09-15 | Una tarea «Facturar el mes YYYY-MM» por familia, idempotente. Sin PR (TASK-0010).           |
+| TASK-0084 | UI: botón de tareas de huecos + enlace ficha → cola | Agente      | Hecha  | 2026-09-15 | Home y ficha. Sin PR (TASK-0010).                                                           |
+
+## Campaña 2026-09-18 — sanear el repositorio antes de auditar
+
+Revisión de estado a petición del usuario. Los gates de RULE-004 no estaban en
+verde y el ledger no reflejaba la realidad: quince tareas figuraban `En curso`
+con el código ya escrito y probado, y seis mil líneas vivían solo en el working
+tree. Se arregla eso antes de abrir nada nuevo.
+
+| ID        | Título                                                        | Responsable | Estado | Cierre     | Refs / Notas                                                                                                                                    |
+| --------- | ------------------------------------------------------------- | ----------- | ------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-0085 | Poner RULE-004 en verde: e2e de avisos + formato              | Agente      | Hecha  | 2026-09-18 | `login.spec.ts` cerraba el desplegable con un segundo clic y seguía esperándolo visible; ahora afirma `toBeHidden`. Prettier sobre 11 ficheros. |
+| TASK-0086 | Cerrar TASK-0050…0064 y quitar estados duplicados del ROADMAP | Agente      | Hecha  | 2026-09-18 | Cierre con fecha de verificación (2026-09-18), no de escritura. ROADMAP deja de marcar ✅ por su cuenta y enlaza al ledger.                     |
+| TASK-0087 | Commitear el trabajo pendiente de TASK-0050…0084              | Agente      | Hecha  | 2026-09-18 | 43 modificados + 29 sin trackear en `fix/task-0050-runtime-and-ingestion-bugs`. Sin PR (TASK-0010).                                             |
+
 ## Fase 3 y siguientes — Pendiente de desglosar
 
 Se dan de alta en este ledger conforme se planifiquen, con ids a partir de
-TASK-0050, siguiendo el protocolo de arriba. El detalle narrativo de cada
+TASK-0085, siguiendo el protocolo de arriba. El detalle narrativo de cada
 fase vive en [docs/ROADMAP.md](docs/ROADMAP.md).

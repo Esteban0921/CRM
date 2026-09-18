@@ -43,6 +43,9 @@ Login único tanto para padres como para el equipo interno.
 - createdAt
 - updatedAt
 
+El listado staff (`GET /families`, TASK-0075) añade campos calculados que no
+son columnas: `outstandingAmount`, `overdueAmount`, `unbilled`.
+
 ### Student (alumno)
 
 - id
@@ -72,6 +75,8 @@ Qué servicio de transporte tiene contratado un alumno. Sin `routeId` todavía
 ---
 
 ## Proveedores (Fase 1/2) ✅
+
+Alta y edición por staff (`POST/PATCH /suppliers`, TASK-0052). El `email` alimenta la clasificación del buzón.
 
 ### Supplier
 
@@ -121,6 +126,8 @@ extrae. Gmail OAuth y extracción real de PDF siguen bloqueados (TASK-0032/0031)
 - parentZipId (nullable, FK → Document)
 - createdAt
 
+Descarga: `GET /documents/{id}/file` (TASK-0051). Staff cualquier adjunto; el padre solo el de una `FamilyInvoice` suya que no esté en `pending_review`.
+
 ---
 
 ## Facturación (Fase 2/3) — modelo ✅, sin datos reales todavía
@@ -141,8 +148,8 @@ otro ciclo de vida y otros campos.
 - amount (se rellena al ingerir desde `extracted_data.total_amount`, parseo ES — TASK-0043)
 - currency
 - issueDate (igual, desde `extracted_data.issue_date`)
-- dueDate
-- status (`pending_review` | `sent` | `paid` | `overdue`)
+- dueDate (si staff publica sin fecha, se rellena a issueDate+30 días — TASK-0053)
+- status (`pending_review` | `sent` | `paid` | `overdue`) — no se puede salir de `pending_review` sin `familyId`. El padre puede avisar «he pagado» (`POST /family-invoices/{id}/claim-payment`, TASK-0068): crea una `Task` de staff y **no** cambia el estado. Staff confirma con `POST /family-invoices/{id}/confirm-payment` (TASK-0071) o al pasar a `paid`; eso cierra la tarea. El padre no recibe `extractedData` (TASK-0074).
 - extractedData (JSON; copia cruda de la extracción, no es lo que ve el padre)
 - confidence (float)
 - createdAt
@@ -184,7 +191,10 @@ correcciones de `Family`/`Student`/`Contract`. `entityId` no es FK: según
 ## Notas y tareas de staff (hallazgo de auditoría comparativa 2026-08-25) ✅
 
 Ninguna de las dos la ve nunca un `parent` — son herramientas de trabajo
-interno del equipo, no un canal de comunicación con la familia.
+interno del equipo, no un canal de comunicación con la familia. El aviso
+«he pagado» del padre (TASK-0068) sí _crea_ una `Task` (`title` fijo
+«El padre indica que ha pagado», `description` empieza por `invoice:{id}`);
+el padre no lista ni lee esa tarea.
 
 ### Note (TASK-0025)
 

@@ -10,7 +10,7 @@ El detalle original de ese módulo de ingesta vive en [SPEC_ORIGINAL.md](SPEC_OR
 
 ---
 
-## Fase 0 – Fundación del repositorio ✅ COMPLETADA
+## Fase 0 – Fundación del repositorio
 
 **Objetivo:** clonar, instalar y trabajar sin fricción, con calidad automatizada.
 
@@ -30,16 +30,16 @@ tablas confirmadas en el motor real, no solo en el SQLite de los tests.
 
 ---
 
-## Fase 1 – Identidad, familias y alumnos ✅ COMPLETADA
+## Fase 1 – Identidad, familias y alumnos
 
 **Objetivo:** login por rol (`parent`/`staff`/`admin`) y CRUD interno de
 familias, alumnos y contratos, con el invariante `familyId` ya aplicado.
 
-- ✅ Backend: modelos `User`/`Family`/`Student`/`Contract` (SQLAlchemy) + primera migración Alembic (TASK-0016).
-- ✅ Backend: auth JWT + hash de contraseña, `POST /auth/login` (TASK-0017).
-- ✅ Backend: dependencia que inyecta/fuerza `familyId` para rol `parent` + CRUD interno (rol `staff`/`admin`) de familias/alumnos/contratos (TASK-0018).
-- ✅ Frontend: login; layout autenticado distinto para padre vs. staff (TASK-0019).
-- ✅ Backend: alta de `User` (incluye padres) por staff/admin (TASK-0020).
+- Backend: modelos `User`/`Family`/`Student`/`Contract` (SQLAlchemy) + primera migración Alembic (TASK-0016).
+- Backend: auth JWT + hash de contraseña, `POST /auth/login` (TASK-0017).
+- Backend: dependencia que inyecta/fuerza `familyId` para rol `parent` + CRUD interno (rol `staff`/`admin`) de familias/alumnos/contratos (TASK-0018).
+- Frontend: login; layout autenticado distinto para padre vs. staff (TASK-0019).
+- Backend: alta de `User` (incluye padres) por staff/admin (TASK-0020).
 
 Migración ya aplicada y verificada contra Postgres real (TASK-0009). Sigue
 pendiente conectar el repo a un remoto para ejercitar PRs de verdad (TASK-0010).
@@ -50,7 +50,7 @@ del proyecto (equivalente a RULE-005).
 
 ---
 
-## Fase 2 – Ingesta de correo y extracción ✅ completa (Gmail aún simulado)
+## Fase 2 – Ingesta de correo y extracción
 
 **Objetivo:** el pipeline descrito en [SPEC_ORIGINAL.md](SPEC_ORIGINAL.md)
 funcionando de punta a punta, escribiendo en `FamilyInvoice` / `SupplierInvoice`.
@@ -63,38 +63,47 @@ del mismo protocolo (`GmailClient`), no rediseñar nada (TASK-0032, pospuesta
 a propósito). El resto de piezas simuladas (antivirus, SMTP) ya se
 verificaron contra servicios reales — ver más abajo.
 
-- ✅ Modelos `Supplier`/`Email`/`Document`/`FamilyInvoice`/`SupplierInvoice`/`AuditLog` + migración (TASK-0021).
-- ✅ Orquestador de ingesta + `GmailClient`/`FakeGmailClient` (TASK-0022): idempotencia por `gmail_id`, etiquetas `AUTO/PROCESSED`/`AUTO/FAILED`.
-- ✅ Clasificación por reglas + extracción de campos por plantilla, estilo `invoice2data` (TASK-0023).
-- ✅ Límites zip-bomb (ratio/tamaño/nº ficheros) + interfaz de escaneo (`ClamdScanner` real en Docker, ver TASK-0033) (TASK-0013).
-- ✅ Distinción factura-a-familia vs. factura-de-proveedor (por email de `Supplier` conocido).
-- ✅ Matching automático de `FamilyInvoice` → `Family` por nombre de alumno (TASK-0030) — ambiguo o sin match queda para revisión manual.
-- ✅ Cola de revisión: `family-invoices`/`supplier-invoices`, ordenada por `confidence` (TASK-0014).
-- ✅ Notificación por email a la familia cuando se enlaza una factura nueva (TASK-0015).
-- ✅ `ClamdScanner` real contra un daemon `clamd` en Docker, verificado con archivo limpio y con el string EICAR (TASK-0033).
-- ✅ `SmtpEmailSender` real contra Mailpit, verificado end-to-end vía la API REST de Mailpit (TASK-0034).
-- ✅ `POST /ingestion/run` (staff/admin): el orquestador no tenía ningún punto de entrada real hasta ahora, solo se ejecutaba en tests (TASK-0041, hallazgo de esta sesión).
-- ⏳ Extracción real de texto de PDF — pypdf/pdfplumber (TASK-0031, necesita muestras reales).
+- Modelos `Supplier`/`Email`/`Document`/`FamilyInvoice`/`SupplierInvoice`/`AuditLog` + migración (TASK-0021).
+- Orquestador de ingesta + `GmailClient`/`FakeGmailClient` (TASK-0022): idempotencia por `gmail_id`, etiquetas `AUTO/PROCESSED`/`AUTO/FAILED`.
+- Clasificación por reglas + extracción de campos por plantilla, estilo `invoice2data` (TASK-0023).
+- Límites zip-bomb (ratio/tamaño/nº ficheros) + interfaz de escaneo (`ClamdScanner` real en Docker, ver TASK-0033) (TASK-0013).
+- Distinción factura-a-familia vs. factura-de-proveedor (por email de `Supplier` conocido).
+- Matching automático de `FamilyInvoice` → `Family` por nombre de alumno (TASK-0030) — ambiguo o sin match queda para revisión manual.
+- Cola de revisión: `family-invoices`/`supplier-invoices`, ordenada por `confidence` (TASK-0014).
+- Notificación por email a la familia cuando se enlaza una factura nueva (TASK-0015).
+- `ClamdScanner` real contra un daemon `clamd` en Docker, verificado con archivo limpio y con el string EICAR (TASK-0033).
+- `SmtpEmailSender` real contra Mailpit, verificado end-to-end vía la API REST de Mailpit (TASK-0034).
+- `POST /ingestion/run` (staff/admin): el orquestador no tenía ningún punto de entrada real hasta ahora, solo se ejecutaba en tests (TASK-0041, hallazgo de esta sesión).
+- Extracción real de texto de PDF — pypdf/pdfplumber (TASK-0031, necesita muestras reales).
 
 ---
 
-## Fase 3 – Dashboards ✅ completa (con huecos menores anotados)
+## Fase 3 – Dashboards
 
 **Objetivo:** padres consultando sus facturas; staff revisando y corrigiendo.
 
-- ✅ API: `family-invoices`/`supplier-invoices` (listado filtrable, detalle, corrección con audit trail).
-- ✅ API: notas internas (`Note`) y tareas/recordatorios (`Task`) para staff.
-- ✅ API: exportación de datos de una familia (`GET /families/{id}/export`, RGPD).
-- ✅ Frontend: `/dashboard` (padre) lista sus `FamilyInvoice` reales; `/dashboard/invoices` (staff) es la cola de revisión (TASK-0035).
-- ✅ Frontend: `/dashboard/families` (alta/listado) y `/dashboard/families/[id]` (ficha con alumnos, contratos, notas, tareas, exportar/anonimizar RGPD) (TASK-0036/0037/0038/0039/0040).
-- ✅ Frontend: `/dashboard/invoices` como tablero kanban por estado, inspirado en Huly (TASK-0042) — ver "Inspiración de diseño" más abajo.
-- ✅ Frontend: asignar familia desde la tarjeta del kanban; el padre no ve facturas `pending_review` (TASK-0044, RULE-017).
-- ✅ Frontend: tablero de facturas de proveedor (TASK-0045).
-- ✅ Descarga del export RGPD como fichero JSON (TASK-0040).
-- ✅ Copiar `extracted_data` a `amount`/`issue_date` al ingerir (TASK-0043).
-- ✅ Sistema de diseño propio y home de staff con métricas (TASK-0047).
-- ✅ Ingesta de prueba desde la UI; aviso a la familia al publicar, no al ingerir (TASK-0048).
-- ⏳ Exportación CSV/Excel de la vista filtrada de facturas (uso administrativo masivo, distinto del export RGPD).
+- API: `family-invoices`/`supplier-invoices` (listado filtrable, detalle, corrección con audit trail).
+- API: notas internas (`Note`) y tareas/recordatorios (`Task`) para staff.
+- API: exportación de datos de una familia (`GET /families/{id}/export`, RGPD).
+- Frontend: `/dashboard` (padre) lista sus `FamilyInvoice` reales; `/dashboard/invoices` (staff) es la cola de revisión (TASK-0035).
+- Frontend: `/dashboard/families` (alta/listado) y `/dashboard/families/[id]` (ficha con alumnos, contratos, notas, tareas, exportar/anonimizar RGPD) (TASK-0036/0037/0038/0039/0040).
+- Frontend: `/dashboard/invoices` como tablero kanban por estado, inspirado en Huly (TASK-0042) — ver "Inspiración de diseño" más abajo.
+- Frontend: asignar familia desde la tarjeta del kanban; el padre no ve facturas `pending_review` (TASK-0044, RULE-017).
+- Frontend: tablero de facturas de proveedor (TASK-0045).
+- Descarga del export RGPD como fichero JSON (TASK-0040).
+- Copiar `extracted_data` a `amount`/`issue_date` al ingerir (TASK-0043).
+- Sistema de diseño propio y home de staff con métricas (TASK-0047).
+- Ingesta de prueba desde la UI; aviso a la familia al publicar, no al ingerir (TASK-0048).
+- Descarga del PDF de factura (`GET /documents/{id}/file`, TASK-0051).
+- Alta de padres en la ficha e alta/edición de proveedores (TASK-0052).
+- No se publica una factura sin familia; deuda en ficha y home; recordatorio de vencimiento a demanda (TASK-0053).
+- Búsqueda global staff (TASK-0054), CSV de facturas (TASK-0055), historial en la ficha (TASK-0056), visor PDF (TASK-0057).
+- Vencidas automáticas (TASK-0058), bandeja de tareas (TASK-0059), cola de notas de crédito (TASK-0060).
+- Cockpit del mes, familias en riesgo, duplicados, bandeja de correos y paleta Ctrl+K (TASK-0061 … TASK-0064).
+- Huecos del mes, campana de avisos, acciones masivas en el kanban, «He pagado» del padre y recordatorio a 7 días (TASK-0065 … TASK-0069).
+- Confirmar cobro (cierra el aviso), informe de cierre del mes y el padre no recibe `extracted_data` (TASK-0070 … TASK-0074).
+- Deuda en el listado de familias, antigüedad en el kanban, avisos del padre y CSV del cierre (TASK-0075 … TASK-0079).
+- Facturas en la ficha, filtros en el kanban y tareas para huecos del mes (TASK-0080 … TASK-0084).
 
 ### Inspiración de diseño (2026-08-26): Huly, solo en superficie
 
@@ -108,12 +117,12 @@ tablero kanban de la cola de revisión (TASK-0042).
 
 ---
 
-## Fase 4 – Robustez y notificaciones ✅ verificada contra servicios reales
+## Fase 4 – Robustez y notificaciones
 
-- ✅ Notificación por email a la familia cuando se enlaza una factura nueva (TASK-0015), verificada contra `SmtpEmailSender` real + Mailpit (TASK-0034).
-- ✅ Retención/RGPD: mecanismo de anonimización (`POST /families/{id}/anonymize`, TASK-0012) — la política (cuándo, con qué base legal) sigue sin decidir.
-- ⏳ Recordatorios automáticos de vencimiento próximo (hoy `Task` es manual, staff lo crea a mano).
-- ⏳ Reintentos con backoff, dead-letter para correos fallidos (hoy un fallo marca `AUTO/FAILED` y para ahí).
+- Notificación por email a la familia cuando se enlaza una factura nueva (TASK-0015), verificada contra `SmtpEmailSender` real + Mailpit (TASK-0034).
+- Retención/RGPD: mecanismo de anonimización (`POST /families/{id}/anonymize`, TASK-0012) — la política (cuándo, con qué base legal) sigue sin decidir.
+- Recordatorios de vencimiento: botón staff envía vencidas (`POST /notifications/overdue-reminders`, TASK-0053) y las que vencen en 7 días (`POST /notifications/due-soon-reminders`, TASK-0069). Sigue sin cron/cola (un clic, no un job). Nunca incluye `pending_review`.
+- Reintentos con backoff, dead-letter para correos fallidos (hoy un fallo marca `AUTO/FAILED` y para ahí).
 
 ---
 
