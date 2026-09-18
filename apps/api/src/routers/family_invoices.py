@@ -28,7 +28,6 @@ from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
 from models.task import Task, TaskStatus
 from models.user import User, UserRole
-from notifications.email_sender import EmailSender, get_email_sender
 from notifications.service import (
     PAYMENT_CLAIM_TITLE,
     close_payment_claim_tasks,
@@ -235,7 +234,6 @@ def update_family_invoice(
     payload: FamilyInvoiceUpdate,
     db: Session = Depends(get_db),
     staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
-    sender: EmailSender = Depends(get_email_sender),
 ) -> FamilyInvoiceRead:
     invoice = db.get(FamilyInvoice, invoice_id)
     if invoice is None:
@@ -289,17 +287,19 @@ def update_family_invoice(
         before=before,
         after=changes,
     )
-    db.commit()
-    db.refresh(invoice)
     published = (
         previous_status == FamilyInvoiceStatus.PENDING_REVIEW
         and invoice.status != FamilyInvoiceStatus.PENDING_REVIEW
     )
     if published:
-        try:
-            notify_new_family_invoice(db, sender, invoice)
-        except OSError:
-            pass
+        # Encolar, no enviar: el aviso entra en la MISMA transaccion que la
+        # publicacion. Antes el envio iba dentro de la peticion envuelto en
+        # `except OSError: pass`, asi que con el SMTP caido la factura quedaba
+        # publicada, el padre no se enteraba y no habia ni registro ni
+        # reintento (TASK-0104).
+        notify_new_family_invoice(db, invoice)
+    db.commit()
+    db.refresh(invoice)
     return _with_family_names(db, [invoice])[0]
 
 
@@ -308,7 +308,6 @@ def bulk_update_family_invoices(
     payload: FamilyInvoiceBulkUpdate,
     db: Session = Depends(get_db),
     staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
-    sender: EmailSender = Depends(get_email_sender),
 ) -> FamilyInvoiceBulkResult:
     if payload.status is None and payload.family_id is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Indica status o family_id")
@@ -330,7 +329,6 @@ def bulk_update_family_invoices(
                 payload=FamilyInvoiceUpdate(**changes),
                 db=db,
                 staff=staff,
-                sender=sender,
             )
             updated += 1
         except HTTPException as exc:
@@ -393,7 +391,6 @@ def confirm_payment(
     invoice_id: uuid.UUID,
     db: Session = Depends(get_db),
     staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
-    sender: EmailSender = Depends(get_email_sender),
 ) -> FamilyInvoiceRead:
     """TASK-0071. Staff confirma el cobro. Cierra el aviso del padre."""
     invoice = db.get(FamilyInvoice, invoice_id)
@@ -416,5 +413,4 @@ def confirm_payment(
         payload=FamilyInvoiceUpdate(status=FamilyInvoiceStatus.PAID),
         db=db,
         staff=staff,
-        sender=sender,
     )

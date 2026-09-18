@@ -31,14 +31,23 @@ class NoOpEmailSender:
         self.sent.append(SentEmail(to=to, subject=subject, body=body))
 
 
-def get_email_sender() -> EmailSender:
-    """SMTP real si Mailpit/servidor responde; si no, NoOp (no es RULE-016)."""
+def get_email_sender() -> EmailSender | None:
+    """El transporte real, o `None` si no hay ninguno (TASK-0105).
+
+    Antes caia a `NoOpEmailSender` en silencio: con Mailpit apagado la API
+    respondia «enviado» y no salia un solo correo. Un doble de pruebas no puede
+    ser el plan B de produccion — `NoOpEmailSender` se construye a mano en los
+    tests, y aqui devolver `None` obliga al llamador a decir la verdad.
+
+    El sondeo TCP solo ocurre en el flush. Cuando estaba en `Depends` de cada
+    endpoint costaba 3 s en CADA `PATCH`, publicara o no.
+    """
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=3.0):
             pass
-        return SmtpEmailSender()
     except OSError:
-        return NoOpEmailSender()
+        return None
+    return SmtpEmailSender()
 
 
 class SmtpEmailSender:

@@ -2,13 +2,14 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from main import app
 from models.document import Document, DocumentType
 from models.email import Email
 from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
+from models.notification_outbox import NotificationOutbox
 from models.user import User, UserRole
-from notifications.email_sender import NoOpEmailSender, get_email_sender
+from notifications.email_sender import NoOpEmailSender
+from notifications.outbox import flush
 from notifications.service import (
     notify_due_soon_invoices,
     notify_new_family_invoice,
@@ -30,6 +31,20 @@ def _make_invoice(db_session, family_id=None, amount=None) -> FamilyInvoice:
     db_session.add(invoice)
     db_session.commit()
     return invoice
+
+
+def _outbox(db_session, status=None):
+    query = db_session.query(NotificationOutbox)
+    if status is not None:
+        query = query.filter(NotificationOutbox.status == status)
+    return query.all()
+
+
+def _drain(db_session):
+    """Encolar y vaciar: el flush es el unico que toca el SMTP (TASK-0105)."""
+    sender = NoOpEmailSender()
+    flush(db_session, sender)
+    return sender
 
 
 def test_notifies_all_parents_of_the_linked_family(db_session):
@@ -56,9 +71,9 @@ def test_notifies_all_parents_of_the_linked_family(db_session):
     )
     db_session.commit()
     invoice = _make_invoice(db_session, family_id=family.id, amount=Decimal("45.00"))
-    sender = NoOpEmailSender()
-
-    notify_new_family_invoice(db_session, sender, invoice)
+    notify_new_family_invoice(db_session, invoice)
+    db_session.commit()
+    sender = _drain(db_session)
 
     recipients = {sent.to for sent in sender.sent}
     assert recipients == {"padre1@example.com", "padre2@example.com"}
@@ -67,11 +82,10 @@ def test_notifies_all_parents_of_the_linked_family(db_session):
 
 def test_does_not_notify_when_invoice_is_unlinked(db_session):
     invoice = _make_invoice(db_session, family_id=None)
-    sender = NoOpEmailSender()
+    notify_new_family_invoice(db_session, invoice)
+    db_session.commit()
 
-    notify_new_family_invoice(db_session, sender, invoice)
-
-    assert sender.sent == []
+    assert _outbox(db_session) == []
 
 
 def test_does_not_notify_when_family_has_no_parent_users_yet(db_session):
@@ -79,11 +93,10 @@ def test_does_not_notify_when_family_has_no_parent_users_yet(db_session):
     db_session.add(family)
     db_session.commit()
     invoice = _make_invoice(db_session, family_id=family.id)
-    sender = NoOpEmailSender()
+    notify_new_family_invoice(db_session, invoice)
+    db_session.commit()
 
-    notify_new_family_invoice(db_session, sender, invoice)
-
-    assert sender.sent == []
+    assert _outbox(db_session) == []
 
 
 def test_overdue_reminder_emails_parents_and_skips_pending_review(db_session):
@@ -105,9 +118,10 @@ def test_overdue_reminder_emails_parents_and_skips_pending_review(db_session):
     pending = _make_invoice(db_session, family_id=family.id, amount=Decimal("99.00"))
     pending.status = FamilyInvoiceStatus.PENDING_REVIEW
     db_session.commit()
-    sender = NoOpEmailSender()
-
-    sent, families = notify_overdue_invoices(db_session, sender)
+    outcome = notify_overdue_invoices(db_session)
+    db_session.commit()
+    sent, families = outcome.queued, outcome.families
+    sender = _drain(db_session)
 
     assert sent == 1
     assert families == 1
@@ -139,8 +153,6 @@ def test_staff_can_trigger_overdue_reminders_endpoint(client, db_session):
     )
     db_session.add(staff)
     db_session.commit()
-    sender = NoOpEmailSender()
-    app.dependency_overrides[get_email_sender] = lambda: sender
     token = create_access_token(user_id=staff.id, role=staff.role.value, family_id=None)
 
     response = client.post(
@@ -149,7 +161,14 @@ def test_staff_can_trigger_overdue_reminders_endpoint(client, db_session):
     )
 
     assert response.status_code == 200
-    assert response.json() == {"sent": 1, "families": 1}
+    assert response.json() == {
+        "queued": 1,
+        "already_queued": 0,
+        "families": 1,
+        "families_without_recipient": 0,
+        "pending_in_outbox": 1,
+    }
+    sender = _drain(db_session)
     assert sender.sent[0].to == "padre.endpoint@example.com"
 
 
@@ -175,9 +194,10 @@ def test_due_soon_reminder_skips_pending_review(db_session):
     pending.status = FamilyInvoiceStatus.PENDING_REVIEW
     pending.due_date = date.today() + timedelta(days=2)
     db_session.commit()
-    sender = NoOpEmailSender()
-
-    sent, families = notify_due_soon_invoices(db_session, sender)
+    outcome = notify_due_soon_invoices(db_session)
+    db_session.commit()
+    sent, families = outcome.queued, outcome.families
+    sender = _drain(db_session)
 
     assert sent == 1
     assert families == 1
@@ -249,8 +269,6 @@ def test_staff_can_trigger_due_soon_reminders_endpoint(client, db_session):
     )
     db_session.add(staff)
     db_session.commit()
-    sender = NoOpEmailSender()
-    app.dependency_overrides[get_email_sender] = lambda: sender
 
     response = client.post(
         "/notifications/due-soon-reminders",
@@ -258,7 +276,14 @@ def test_staff_can_trigger_due_soon_reminders_endpoint(client, db_session):
     )
 
     assert response.status_code == 200
-    assert response.json() == {"sent": 1, "families": 1}
+    assert response.json() == {
+        "queued": 1,
+        "already_queued": 0,
+        "families": 1,
+        "families_without_recipient": 0,
+        "pending_in_outbox": 1,
+    }
+    sender = _drain(db_session)
     assert sender.sent[0].to == "padre.siete@example.com"
 
 

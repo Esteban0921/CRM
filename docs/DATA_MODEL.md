@@ -236,3 +236,19 @@ Se desglosará cuando toque esa fase — no se modela todavía (ver ROADMAP.md).
 4. Los estados deben estar bien definidos en el código (enums), no strings sueltos.
 5. Toda corrección manual de `extractedData` o de campos de facturación pasa
    por `AuditLog`.
+
+## `NotificationOutbox` (TASK-0104)
+
+Bandeja de salida de los avisos a las familias. Existe para que el envio
+no viva dentro de la peticion que publica la factura.
+
+| Campo                          | Notas                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `kind`                         | `new_invoice` / `overdue_reminder` / `due_soon_reminder`                                             |
+| `dedupe_key`                   | **unico**. `new_invoice:{invoice}:{parent}` o `{tipo}:{familia}:{parent}:{dia}`                      |
+| `recipient`, `subject`, `body` | El correo ya compuesto: se encola lo que se va a mandar, no una referencia que pueda cambiar despues |
+| `status`                       | `pending` / `sent` / `failed`                                                                        |
+| `attempts`, `last_error`       | Se reintenta hasta 5 veces; despues queda `failed` con el motivo                                     |
+| `sent_at`                      | Cuando salio de verdad, no cuando se encolo                                                          |
+
+Migracion `8c52906e9cf4`, verificada upgrade y downgrade contra Postgres real.

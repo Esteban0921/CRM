@@ -547,8 +547,35 @@ export function getMyNotifications(token: string): Promise<InboxItem[]> {
   return request<InboxItem[]>('/notifications/mine', authed(token));
 }
 
-export function sendDueSoonReminders(token: string): Promise<{ sent: number; families: number }> {
+export interface ReminderOutcome {
+  queued: number;
+  already_queued: number;
+  families: number;
+  families_without_recipient: number;
+  pending_in_outbox: number;
+}
+
+export interface FlushOutcome {
+  sent: number;
+  failed: number;
+  pending: number;
+  transport_available: boolean;
+  errors: string[];
+}
+
+export function sendDueSoonReminders(token: string): Promise<ReminderOutcome> {
   return request('/notifications/due-soon-reminders', authed(token, { method: 'POST' }));
+}
+
+/**
+ * Vacia la bandeja de salida contra el SMTP real (TASK-0105).
+ *
+ * Encolar y enviar son dos pasos distintos a proposito: el endpoint de
+ * recordatorios no toca el SMTP, asi que no puede afirmar que algo haya salido.
+ * Este si, y dice cuantos salieron, cuantos fallaron y si habia transporte.
+ */
+export function flushNotifications(token: string): Promise<FlushOutcome> {
+  return request('/notifications/flush', authed(token, { method: 'POST' }));
 }
 
 export function bulkUpdateFamilyInvoices(
@@ -635,7 +662,7 @@ export function getBillingSummary(token: string): Promise<StaffBillingSummary> {
   return request<StaffBillingSummary>('/billing/summary', authed(token));
 }
 
-export function sendOverdueReminders(token: string): Promise<{ sent: number; families: number }> {
+export function sendOverdueReminders(token: string): Promise<ReminderOutcome> {
   return request('/notifications/overdue-reminders', authed(token, { method: 'POST' }));
 }
 

@@ -2,9 +2,10 @@ import datetime
 import uuid
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from models.family_invoice import FamilyInvoiceStatus
+from models.notification_outbox import NotificationKind, NotificationStatus
 
 
 class FamilyBilling(BaseModel):
@@ -53,8 +54,45 @@ class DuplicateGroup(BaseModel):
 
 
 class OverdueReminderResult(BaseModel):
-    sent: int
+    """Lo que se ha ENCOLADO, no lo que se ha enviado (TASK-0105).
+
+    El campo `sent` desaparece a proposito: este endpoint no toca el SMTP, asi
+    que no puede afirmar que algo haya salido. Antes devolvia `sent: 1,
+    families: 37` con Mailpit apagado y sin que saliera un solo correo, y las
+    36 familias sin usuario padre se saltaban en silencio.
+    """
+
+    queued: int
+    already_queued: int
     families: int
+    families_without_recipient: int
+    pending_in_outbox: int
+
+
+class FlushOutcome(BaseModel):
+    """Resultado de vaciar la bandeja contra el SMTP real."""
+
+    sent: int
+    failed: int
+    pending: int
+    transport_available: bool
+    errors: list[str] = []
+
+
+class OutboxItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kind: NotificationKind
+    recipient: str
+    subject: str
+    family_id: uuid.UUID | None
+    invoice_id: uuid.UUID | None
+    status: NotificationStatus
+    attempts: int
+    last_error: str | None
+    created_at: datetime.datetime
+    sent_at: datetime.datetime | None
 
 
 class UnbilledFamily(BaseModel):

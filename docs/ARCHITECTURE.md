@@ -251,6 +251,26 @@ dos fallbacks por nombre base -uno sobre `original_filename`, que lo controla
 quien manda el correo- devolvian los bytes de otro documento cuando el propio
 faltaba (TASK-0091).
 
+### Avisos a las familias: bandeja de salida
+
+Publicar una factura **encola** el aviso en `notification_outbox`, en la
+misma transaccion que la publicacion: o se publica y queda encolado, o no
+ocurre ninguna de las dos cosas. El envio real lo hace
+`POST /notifications/flush`, que es el unico sitio que toca el SMTP y el
+unico que puede afirmar que algo salio (TASK-0104/0105).
+
+- `dedupe_key` es unico en base de datos: una factura se anuncia una vez y
+  una familia recibe como mucho un recordatorio de cada tipo al dia. La
+  deduplicacion no depende de un check-then-insert.
+- `POST /notifications/overdue-reminders` y `due-soon-reminders` devuelven
+  `queued` / `already_queued` / `families_without_recipient`, no `sent`: no
+  envian, asi que no pueden decir que enviaron.
+- `GET /notifications/outbox` (staff) enseña que se mando a cada familia,
+  cuando, y el motivo si fallo. Una fila se reintenta hasta 5 veces.
+- Medido con Mailpit apagado: el `PATCH` que publica baja de 4,10 s a
+  0,036 s, porque el sondeo TCP del transporte sale del camino de la
+  peticion.
+
 ### Deuda en el listado y avisos del padre
 
 `GET /families` (TASK-0075) incluye `outstanding_amount`, `overdue_amount` y

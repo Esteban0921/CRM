@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -8,8 +10,9 @@ from sqlalchemy.orm import Session
 from billing import invoice_amount, invoice_is_due_soon, invoice_is_overdue
 from models.family import Family
 from models.family_invoice import FamilyInvoice
+from models.notification_outbox import NotificationKind
 from models.user import User, UserRole
-from notifications.email_sender import EmailSender
+from notifications.outbox import enqueue
 
 PAYMENT_CLAIM_TITLE = "El padre indica que ha pagado"
 
@@ -36,6 +39,61 @@ def close_payment_claim_tasks(db: Session, invoice: FamilyInvoice) -> int:
     return len(tasks)
 
 
+@dataclass
+class ReminderOutcome:
+    """Lo que de verdad paso, desglosado.
+
+    Antes la respuesta era `sent: 1, families: 37`: las 36 familias sin usuario
+    padre se saltaban en silencio y eso contaba como exito. Ahora se dicen por
+    separado, porque "no tiene a quien avisar" es un problema de datos que
+    alguien tiene que resolver, no un envio correcto (TASK-0105).
+    """
+
+    queued: int = 0
+    already_queued: int = 0
+    families: int = 0
+    families_without_recipient: int = 0
+
+
+def _queue_reminders(
+    db: Session,
+    by_family: dict,
+    *,
+    kind: NotificationKind,
+    prefix: str,
+    compose,
+) -> ReminderOutcome:
+    outcome = ReminderOutcome(families=len(by_family))
+    # Una familia recibe como mucho un recordatorio de cada tipo al dia: el
+    # doble clic en el boton mandaba dos correos identicos a 90 ms de
+    # distancia (TASK-0104).
+    today = date.today().isoformat()
+    for family_id, invoices in by_family.items():
+        family = db.get(Family, family_id)
+        parents = (
+            db.query(User).filter(User.family_id == family_id, User.role == UserRole.PARENT).all()
+        )
+        if not parents:
+            outcome.families_without_recipient += 1
+            continue
+        subject, body = compose(family.name if family else "", invoices)
+        for parent in parents:
+            row = enqueue(
+                db,
+                kind=kind,
+                dedupe_key=f"{prefix}:{family_id}:{parent.id}:{today}",
+                recipient=parent.email,
+                subject=subject,
+                body=body,
+                family_id=family_id,
+            )
+            if row is None:
+                outcome.already_queued += 1
+            else:
+                outcome.queued += 1
+    return outcome
+
+
 def compose_new_invoice_notification(invoice: FamilyInvoice, family_name: str) -> tuple[str, str]:
     subject = f"Nueva factura disponible para {family_name}"
     amount = (
@@ -52,7 +110,7 @@ def compose_new_invoice_notification(invoice: FamilyInvoice, family_name: str) -
     return subject, body
 
 
-def notify_new_family_invoice(db: Session, sender: EmailSender, invoice: FamilyInvoice) -> None:
+def notify_new_family_invoice(db: Session, invoice: FamilyInvoice) -> int:
     """Avisa a los padres cuando una factura **ya publicada** está lista.
 
     TASK-0048 / RULE-017: no se llama desde la ingesta. El padre no debe
@@ -60,7 +118,7 @@ def notify_new_family_invoice(db: Session, sender: EmailSender, invoice: FamilyI
     factura no está enlazada a una familia: no hay a quien avisar.
     """
     if invoice.family_id is None:
-        return
+        return 0
 
     family = db.get(Family, invoice.family_id)
     parents = (
@@ -69,11 +127,27 @@ def notify_new_family_invoice(db: Session, sender: EmailSender, invoice: FamilyI
         .all()
     )
     if not parents:
-        return
+        return 0
 
     subject, body = compose_new_invoice_notification(invoice, family.name if family else "")
+    queued = 0
     for parent in parents:
-        sender.send(to=parent.email, subject=subject, body=body)
+        # Una factura se anuncia UNA vez. Antes, como el disparo era "el estado
+        # anterior era pending_review y ahora no", rebotar el estado reenviaba
+        # el correo: tres rebotes, tres correos al mismo padre (TASK-0104).
+        row = enqueue(
+            db,
+            kind=NotificationKind.NEW_INVOICE,
+            dedupe_key=f"new_invoice:{invoice.id}:{parent.id}",
+            recipient=parent.email,
+            subject=subject,
+            body=body,
+            family_id=invoice.family_id,
+            invoice_id=invoice.id,
+        )
+        if row is not None:
+            queued += 1
+    return queued
 
 
 def compose_overdue_reminder(family_name: str, invoices: list[FamilyInvoice]) -> tuple[str, str]:
@@ -92,7 +166,7 @@ def compose_overdue_reminder(family_name: str, invoices: list[FamilyInvoice]) ->
     return subject, "\n".join(lines)
 
 
-def notify_overdue_invoices(db: Session, sender: EmailSender) -> tuple[int, int]:
+def notify_overdue_invoices(db: Session) -> ReminderOutcome:
     """Avisa a los padres de familias con facturas vencidas (TASK-0053).
 
     Agrupa por familia: un correo por padre, no uno por factura.
@@ -106,20 +180,13 @@ def notify_overdue_invoices(db: Session, sender: EmailSender) -> tuple[int, int]
     by_family: dict = defaultdict(list)
     for invoice in overdue:
         by_family[invoice.family_id].append(invoice)
-
-    sent = 0
-    for family_id, invoices in by_family.items():
-        family = db.get(Family, family_id)
-        parents = (
-            db.query(User).filter(User.family_id == family_id, User.role == UserRole.PARENT).all()
-        )
-        if not parents:
-            continue
-        subject, body = compose_overdue_reminder(family.name if family else "", invoices)
-        for parent in parents:
-            sender.send(to=parent.email, subject=subject, body=body)
-            sent += 1
-    return sent, len(by_family)
+    return _queue_reminders(
+        db,
+        by_family,
+        kind=NotificationKind.OVERDUE_REMINDER,
+        prefix="overdue",
+        compose=compose_overdue_reminder,
+    )
 
 
 def compose_due_soon_reminder(family_name: str, invoices: list[FamilyInvoice]) -> tuple[str, str]:
@@ -138,7 +205,7 @@ def compose_due_soon_reminder(family_name: str, invoices: list[FamilyInvoice]) -
     return subject, "\n".join(lines)
 
 
-def notify_due_soon_invoices(db: Session, sender: EmailSender) -> tuple[int, int]:
+def notify_due_soon_invoices(db: Session) -> ReminderOutcome:
     upcoming = [
         invoice
         for invoice in db.query(FamilyInvoice).filter(FamilyInvoice.family_id.isnot(None)).all()
@@ -147,16 +214,10 @@ def notify_due_soon_invoices(db: Session, sender: EmailSender) -> tuple[int, int
     by_family: dict = defaultdict(list)
     for invoice in upcoming:
         by_family[invoice.family_id].append(invoice)
-    sent = 0
-    for family_id, invoices in by_family.items():
-        family = db.get(Family, family_id)
-        parents = (
-            db.query(User).filter(User.family_id == family_id, User.role == UserRole.PARENT).all()
-        )
-        if not parents:
-            continue
-        subject, body = compose_due_soon_reminder(family.name if family else "", invoices)
-        for parent in parents:
-            sender.send(to=parent.email, subject=subject, body=body)
-            sent += 1
-    return sent, len(by_family)
+    return _queue_reminders(
+        db,
+        by_family,
+        kind=NotificationKind.DUE_SOON_REMINDER,
+        prefix="due_soon",
+        compose=compose_due_soon_reminder,
+    )

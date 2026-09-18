@@ -2,7 +2,6 @@ import datetime
 import uuid
 from decimal import Decimal
 
-from main import app
 from models.audit_log import AuditedEntityType, AuditLog
 from models.document import Document, DocumentType
 from models.email import Email
@@ -10,7 +9,8 @@ from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
 from models.task import Task, TaskStatus
 from models.user import User, UserRole
-from notifications.email_sender import NoOpEmailSender, get_email_sender
+from notifications.email_sender import NoOpEmailSender
+from notifications.outbox import flush
 from notifications.service import PAYMENT_CLAIM_TITLE
 from security import create_access_token, hash_password
 
@@ -327,9 +327,6 @@ def test_publishing_a_reviewed_invoice_notifies_parents(client, db_session):
     )
     db_session.add(staff)
     db_session.commit()
-    sender = NoOpEmailSender()
-    app.dependency_overrides[get_email_sender] = lambda: sender
-
     response = client.patch(
         f"/family-invoices/{invoice.id}",
         json={"status": "sent"},
@@ -337,6 +334,10 @@ def test_publishing_a_reviewed_invoice_notifies_parents(client, db_session):
     )
 
     assert response.status_code == 200
+    # Publicar ENCOLA; el envio ocurre al vaciar la bandeja (TASK-0104). Asi
+    # una caida del SMTP no puede hacer que el padre se quede sin enterarse.
+    sender = NoOpEmailSender()
+    flush(db_session, sender)
     assert [mail.to for mail in sender.sent] == ["padre.aviso@example.com"]
 
 
@@ -362,14 +363,13 @@ def test_assigning_family_without_publishing_does_not_notify(client, db_session)
     )
     db_session.add(staff)
     db_session.commit()
-    sender = NoOpEmailSender()
-    app.dependency_overrides[get_email_sender] = lambda: sender
-
     response = client.patch(
         f"/family-invoices/{invoice.id}",
         json={"family_id": str(family.id)},
         headers=_auth_header(staff),
     )
+    sender = NoOpEmailSender()
+    flush(db_session, sender)
 
     assert response.status_code == 200
     assert sender.sent == []

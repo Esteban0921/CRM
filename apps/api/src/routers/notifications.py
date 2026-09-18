@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from billing import (
@@ -11,38 +11,93 @@ from db import get_db
 from dependencies import get_current_user, require_role
 from models.email import Email, EmailProcessingStatus
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
+from models.notification_outbox import NotificationOutbox, NotificationStatus
 from models.task import Task, TaskStatus
 from models.user import User, UserRole
-from notifications.email_sender import EmailSender, get_email_sender
+from notifications.email_sender import get_email_sender
+from notifications.outbox import flush, pending_count
 from notifications.service import (
     PAYMENT_CLAIM_TITLE,
     notify_due_soon_invoices,
     notify_overdue_invoices,
 )
-from schemas.billing import InboxItem, OverdueReminderResult
+from schemas.billing import FlushOutcome, InboxItem, OutboxItem, OverdueReminderResult
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+
+def _outcome_to_result(db: Session, outcome) -> OverdueReminderResult:
+    db.commit()
+    return OverdueReminderResult(
+        queued=outcome.queued,
+        already_queued=outcome.already_queued,
+        families=outcome.families,
+        families_without_recipient=outcome.families_without_recipient,
+        pending_in_outbox=pending_count(db),
+    )
 
 
 @router.post("/overdue-reminders", response_model=OverdueReminderResult)
 def send_overdue_reminders(
     db: Session = Depends(get_db),
     _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
-    sender: EmailSender = Depends(get_email_sender),
 ) -> OverdueReminderResult:
-    """Un correo por padre de cada familia con facturas vencidas. Nunca `pending_review`."""
-    sent, families = notify_overdue_invoices(db, sender)
-    return OverdueReminderResult(sent=sent, families=families)
+    """Encola un aviso por padre de cada familia con facturas vencidas.
+
+    Ya no dice "enviado": lo encola y lo dice. El envio de verdad ocurre en
+    `POST /notifications/flush`, que es el unico sitio que toca el SMTP y el
+    unico que puede afirmar que algo salio (TASK-0105). Nunca incluye
+    `pending_review` (RULE-017).
+    """
+    return _outcome_to_result(db, notify_overdue_invoices(db))
 
 
 @router.post("/due-soon-reminders", response_model=OverdueReminderResult)
 def send_due_soon_reminders(
     db: Session = Depends(get_db),
     _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
-    sender: EmailSender = Depends(get_email_sender),
 ) -> OverdueReminderResult:
-    sent, families = notify_due_soon_invoices(db, sender)
-    return OverdueReminderResult(sent=sent, families=families)
+    return _outcome_to_result(db, notify_due_soon_invoices(db))
+
+
+@router.post("/flush", response_model=FlushOutcome)
+def flush_outbox(
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+) -> FlushOutcome:
+    """Vacia la bandeja de salida contra el SMTP real.
+
+    Si no hay transporte, la respuesta lo dice y nada se marca como enviado:
+    antes se caia a `NoOpEmailSender` en silencio y con Mailpit apagado la API
+    devolvia `{"sent": 1, "families": 37}` sin que saliera un solo correo.
+    """
+    sender = get_email_sender()
+    result = flush(db, sender)
+    return FlushOutcome(
+        sent=result.sent,
+        failed=result.failed,
+        pending=result.pending,
+        transport_available=sender is not None,
+        errors=result.errors[:20],
+    )
+
+
+@router.get("/outbox", response_model=list[OutboxItem])
+def list_outbox(
+    outbox_status: NotificationStatus | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+) -> list[NotificationOutbox]:
+    """Que se le ha mandado a cada familia y que no.
+
+    Ante una familia que dice "a mi no me avisasteis" no habia ninguna
+    respuesta posible: el unico rastro de un envio era un toast que se borraba
+    a los cuatro segundos (TASK-0104).
+    """
+    query = db.query(NotificationOutbox)
+    if outbox_status is not None:
+        query = query.filter(NotificationOutbox.status == outbox_status)
+    return query.order_by(NotificationOutbox.created_at.desc()).limit(200).all()
 
 
 @router.get("/inbox", response_model=list[InboxItem])

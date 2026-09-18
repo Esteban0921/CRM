@@ -15,6 +15,7 @@ import {
   runIngestion,
   sendDueSoonReminders,
   sendOverdueReminders,
+  flushNotifications,
   ApiError,
   type AtRiskFamily,
   type FamilyBilling,
@@ -222,12 +223,41 @@ function StaffHome({ name }: { name: string }) {
                 try {
                   const overdue = await sendOverdueReminders(token);
                   const soon = await sendDueSoonReminders(token);
-                  const sent = overdue.sent + soon.sent;
-                  notify(
-                    sent === 0
-                      ? 'No había vencimientos que recordar.'
-                      : `Enviados ${sent} recordatorio(s) (vencidas y 7 días).`,
-                  );
+                  const queued = overdue.queued + soon.queued;
+                  const repetidos = overdue.already_queued + soon.already_queued;
+                  const sinCanal =
+                    overdue.families_without_recipient + soon.families_without_recipient;
+
+                  if (queued === 0 && repetidos > 0) {
+                    notify('Esos recordatorios ya se enviaron hoy. No se repiten.');
+                  } else if (queued === 0) {
+                    notify('No había vencimientos que recordar.');
+                  } else {
+                    // Encolar y enviar son dos pasos: el aviso no se pierde si
+                    // el SMTP esta caido, y el resultado es el de verdad
+                    // (TASK-0104/0105).
+                    const enviado = await flushNotifications(token);
+                    if (!enviado.transport_available) {
+                      notify(
+                        `${queued} recordatorio(s) en cola: el servidor de correo no responde. Se enviarán al reintentar.`,
+                        'error',
+                      );
+                    } else if (enviado.failed > 0) {
+                      notify(
+                        `Enviados ${enviado.sent}, fallaron ${enviado.failed}. Quedan ${enviado.pending} en cola.`,
+                        'error',
+                      );
+                    } else {
+                      notify(`Enviados ${enviado.sent} recordatorio(s) (vencidas y 7 días).`);
+                    }
+                  }
+
+                  if (sinCanal > 0) {
+                    notify(
+                      `${sinCanal} familia(s) con deuda no tienen a quién avisar: dales de alta un acceso.`,
+                      'error',
+                    );
+                  }
                 } catch (err) {
                   notify(
                     err instanceof ApiError
