@@ -61,3 +61,33 @@ test('sin facturas de proveedor, el tablero lo dice claramente', async ({ page }
 
   await expect(page.getByText('No hay facturas de proveedor todavía.')).toBeVisible();
 });
+
+test('staff da de alta un proveedor', async ({ page }) => {
+  const suppliers: unknown[] = [];
+  await page.route(`${API}/supplier-invoices`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/suppliers`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const created = {
+        id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        name: 'Repsol',
+        tax_id: null,
+        email: 'facturas@repsol.com',
+        category: 'fuel',
+      };
+      suppliers.push(created);
+      await route.fulfill({ status: 201, json: created });
+      return;
+    }
+    await route.fulfill({ json: suppliers });
+  });
+
+  await page.goto('/dashboard/suppliers');
+  await page.getByRole('button', { name: 'Nuevo proveedor' }).click();
+  await page.getByLabel('Nombre').fill('Repsol');
+  await page.getByLabel('Email (para clasificar el buzón)').fill('facturas@repsol.com');
+  await page.getByRole('button', { name: 'Añadir proveedor' }).click();
+
+  await expect(page.getByText('Proveedor creado')).toBeVisible();
+});

@@ -70,6 +70,7 @@ test('staff ve las facturas organizadas en un tablero por estado', async ({ page
   await page.goto('/dashboard/invoices');
 
   await expect(page.getByRole('heading', { name: 'Cola de revisión' })).toBeVisible();
+  await expect(page.getByLabel('Filtrar por familia')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Pendiente de revisión' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Familia Garcia/ })).toBeVisible();
   await expect(page.getByText('35% confianza')).toBeVisible();
@@ -121,4 +122,27 @@ test('sin facturas, el tablero lo dice claramente', async ({ page }) => {
   await page.goto('/dashboard/invoices');
 
   await expect(page.getByText('No hay facturas todavía.')).toBeVisible();
+});
+
+test('staff puede publicar varias facturas a la vez', async ({ page }) => {
+  let bulkBody: Record<string, unknown> | null = null;
+  await page.route(`${API}/family-invoices`, async (route) => {
+    await route.fulfill({ json: [PENDING_INVOICE] });
+  });
+  await page.route(`${API}/family-invoices/bulk`, async (route) => {
+    bulkBody = JSON.parse(route.request().postData() ?? '{}');
+    await route.fulfill({ json: { updated: 1, failed: [] } });
+  });
+
+  await page.goto('/dashboard/invoices');
+  await page.getByLabel('Seleccionar factura de Familia Garcia').check();
+  await expect(page.getByText('1 seleccionada(s)')).toBeVisible();
+  await page.getByRole('button', { name: 'Publicar' }).click();
+
+  await expect
+    .poll(() => bulkBody)
+    .toEqual({
+      ids: [PENDING_INVOICE.id],
+      status: 'sent',
+    });
 });

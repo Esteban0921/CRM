@@ -26,6 +26,9 @@ test.beforeEach(async ({ page }) => {
   await page.route(`${API}/auth/me`, async (route) => {
     await route.fulfill({ json: STAFF_ME });
   });
+  await page.route(/http:\/\/localhost:8000\/family-invoices.*/, async (route) => {
+    await route.fulfill({ json: [] });
+  });
 });
 
 test('staff ve el listado de familias y crea una nueva', async ({ page }) => {
@@ -47,6 +50,8 @@ test('staff ve el listado de familias y crea una nueva', async ({ page }) => {
   await page.goto('/dashboard/families');
 
   await expect(page.getByText('Familia Garcia')).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Cobro' })).toBeVisible();
+  await expect(page.getByText('Al día')).toBeVisible();
 
   await page.getByRole('button', { name: 'Nueva familia' }).click();
   await page.getByLabel('Nombre').fill('Familia Nueva');
@@ -89,10 +94,30 @@ test('staff abre una familia, añade una nota y una tarea', async ({ page }) => 
     }
     await route.fulfill({ json: tasks });
   });
+  await page.route(`${API}/users*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/families/${FAMILY.id}/billing`, async (route) => {
+    await route.fulfill({
+      json: {
+        outstanding_amount: '0.00',
+        overdue_amount: '0.00',
+        overdue_count: 0,
+        sent_count: 0,
+        paid_count: 0,
+        currency: 'EUR',
+      },
+    });
+  });
+  await page.route(`${API}/families/${FAMILY.id}/activity`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
 
   await page.goto(`/dashboard/families/${FAMILY.id}`);
 
   await expect(page.getByRole('heading', { name: 'Familia Garcia' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Facturas' })).toBeVisible();
+  await expect(page.getByText('No hay facturas de esta familia.')).toBeVisible();
 
   await page.getByPlaceholder('Nueva nota').fill('Recoge sola los viernes');
   await page.getByRole('button', { name: 'Añadir nota' }).click();
@@ -119,6 +144,24 @@ test('staff descarga el export RGPD como fichero y no usa alert', async ({ page 
   await page.route(`${API}/tasks*`, async (route) => {
     await route.fulfill({ json: [] });
   });
+  await page.route(`${API}/users*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/families/${FAMILY.id}/billing`, async (route) => {
+    await route.fulfill({
+      json: {
+        outstanding_amount: '0.00',
+        overdue_amount: '0.00',
+        overdue_count: 0,
+        sent_count: 0,
+        paid_count: 0,
+        currency: 'EUR',
+      },
+    });
+  });
+  await page.route(`${API}/families/${FAMILY.id}/activity`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
   await page.route(`${API}/families/${FAMILY.id}/export`, async (route) => {
     await route.fulfill({ json: { family: FAMILY, students: [] } });
   });
@@ -134,4 +177,82 @@ test('staff descarga el export RGPD como fichero y no usa alert', async ({ page 
 
   await expect(page.getByText('Exportación descargada')).toBeVisible();
   expect(alerts).toEqual([]);
+});
+
+test('un error al cargar familias se muestra en la pagina', async ({ page }) => {
+  await page.route(`${API}/families`, async (route) => {
+    await route.fulfill({ status: 500, json: { detail: 'boom' } });
+  });
+
+  await page.goto('/dashboard/families');
+
+  await expect(page.getByText('No se pudieron cargar las familias')).toBeVisible();
+  await expect(page.getByText('Cargando...')).toHaveCount(0);
+});
+
+test('un padre no entra al listado de familias', async ({ page }) => {
+  await page.route(`${API}/auth/me`, async (route) => {
+    await route.fulfill({
+      json: {
+        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        email: 'padre@example.com',
+        name: 'Ana Padre',
+        role: 'parent',
+        family_id: FAMILY.id,
+      },
+    });
+  });
+  await page.route(`${API}/family-invoices`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+
+  await page.goto('/dashboard/families');
+
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByText('Facturas de tu familia')).toBeVisible();
+});
+
+test('anonimizar acepta 204 sin cuerpo y muestra el toast', async ({ page }) => {
+  await page.route(`${API}/families/${FAMILY.id}`, async (route) => {
+    await route.fulfill({ json: FAMILY });
+  });
+  await page.route(`${API}/students*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/contracts*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/notes*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/tasks*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/users*`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/families/${FAMILY.id}/billing`, async (route) => {
+    await route.fulfill({
+      json: {
+        outstanding_amount: '0.00',
+        overdue_amount: '0.00',
+        overdue_count: 0,
+        sent_count: 0,
+        paid_count: 0,
+        currency: 'EUR',
+      },
+    });
+  });
+  await page.route(`${API}/families/${FAMILY.id}/activity`, async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route(`${API}/families/${FAMILY.id}/anonymize`, async (route) => {
+    await route.fulfill({ status: 204, body: '' });
+  });
+
+  await page.goto(`/dashboard/families/${FAMILY.id}`);
+  await page.getByRole('button', { name: 'Anonimizar (RGPD)' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Anonimizar' }).click();
+
+  await expect(page.getByText('Familia anonimizada')).toBeVisible();
 });

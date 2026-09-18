@@ -1,13 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import {
+  createSupplier,
   getSupplierInvoices,
   getSuppliers,
   updateSupplierInvoice,
+  ApiError,
   type Supplier,
+  type SupplierCategory,
   type SupplierInvoice,
   type SupplierInvoiceStatus,
 } from '@/lib/api';
@@ -15,9 +19,13 @@ import { getStoredToken } from '@/lib/auth-storage';
 import { formatAmount, formatDate } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
+import { DownloadDocumentButton } from '@/components/ui/download-document';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Input, Select } from '@/components/ui/input';
 import { PageHeader } from '@/components/ui/page-header';
-import { Select } from '@/components/ui/input';
+import { useToast } from '@/components/ui/toast';
 
 const COLUMNS: { status: SupplierInvoiceStatus; label: string; accent: string }[] = [
   { status: 'pending_review', label: 'Pendiente de revisión', accent: 'border-t-amber-400' },
@@ -35,9 +43,15 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function SupplierInvoicesPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const { notify } = useToast();
   const [invoices, setInvoices] = useState<SupplierInvoice[] | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [category, setCategory] = useState<SupplierCategory>('other');
+  const [submitting, setSubmitting] = useState(false);
 
   function reload() {
     const token = getStoredToken();
@@ -51,6 +65,26 @@ export default function SupplierInvoicesPage() {
   }
 
   useEffect(reload, []);
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = getStoredToken();
+    if (!token) return;
+    setSubmitting(true);
+    try {
+      await createSupplier(token, { name, email: email || undefined, category });
+      setName('');
+      setEmail('');
+      setCategory('other');
+      setOpen(false);
+      notify('Proveedor creado');
+      reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se pudo crear el proveedor');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function moveTo(invoiceId: string, nextStatus: SupplierInvoiceStatus) {
     const token = getStoredToken();
@@ -100,7 +134,37 @@ export default function SupplierInvoicesPage() {
       <PageHeader
         title="Facturas de proveedor"
         description="Gastos internos: combustible, taller, seguros. El padre no ve este tablero."
+        actions={<Button onClick={() => setOpen(true)}>Nuevo proveedor</Button>}
       />
+      <Dialog open={open} title="Nuevo proveedor" onClose={() => setOpen(false)}>
+        <form onSubmit={handleCreate} className="flex flex-col gap-3">
+          <Input
+            label="Nombre"
+            required
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <Input
+            label="Email (para clasificar el buzón)"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <Select
+            label="Categoría"
+            value={category}
+            onChange={(event) => setCategory(event.target.value as SupplierCategory)}
+          >
+            <option value="fuel">Combustible</option>
+            <option value="maintenance">Mantenimiento</option>
+            <option value="insurance">Seguro</option>
+            <option value="other">Otro</option>
+          </Select>
+          <Button type="submit" disabled={submitting}>
+            Añadir proveedor
+          </Button>
+        </form>
+      </Dialog>
       {error && <p className="text-sm text-rose-700">{error}</p>}
       {invoices === null ? (
         <p className="text-sm text-muted">Cargando...</p>
@@ -142,6 +206,10 @@ export default function SupplierInvoicesPage() {
                     <Badge tone="slate">
                       {CATEGORY_LABELS[invoice.category] ?? invoice.category}
                     </Badge>
+                    <DownloadDocumentButton
+                      documentId={invoice.document_id}
+                      label="Descargar PDF"
+                    />
                     {suppliers.length > 0 && (
                       <Select
                         aria-label={`Asignar proveedor de ${invoice.supplier_name ?? 'factura'}`}

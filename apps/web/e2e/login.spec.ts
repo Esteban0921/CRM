@@ -17,6 +17,26 @@ test('un padre inicia sesión y ve su dashboard', async ({ page }) => {
       },
     });
   });
+  await page.route(
+    'http://localhost:8000/families/22222222-2222-2222-2222-222222222222/billing',
+    async (route) => {
+      await route.fulfill({
+        json: {
+          outstanding_amount: '45.00',
+          overdue_amount: '0.00',
+          overdue_count: 0,
+          sent_count: 1,
+          paid_count: 0,
+          currency: 'EUR',
+        },
+      });
+    },
+  );
+  await page.route('http://localhost:8000/notifications/mine', async (route) => {
+    await route.fulfill({
+      json: [{ kind: 'overdue', title: 'Facturas vencidas', href: '/dashboard', count: 1 }],
+    });
+  });
   await page.route('**/family-invoices', async (route) => {
     await route.fulfill({
       json: [
@@ -46,7 +66,12 @@ test('un padre inicia sesión y ve su dashboard', async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard/);
   await expect(page.getByRole('heading', { name: 'Hola, Ana Padre' })).toBeVisible();
   await expect(page.getByText('Facturas de tu familia')).toBeVisible();
-  await expect(page.getByText(/45,00/)).toBeVisible();
+  await expect(page.getByRole('listitem').getByText(/45,00/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'He pagado' })).toBeVisible();
+  await page.getByRole('button', { name: 'Avisos' }).click();
+  await expect(page.getByRole('link', { name: /Facturas vencidas/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Avisos' }).click();
+  await expect(page.getByRole('link', { name: /Facturas vencidas/ })).toBeHidden();
 });
 
 test('un fallo de login muestra el mensaje de error', async ({ page }) => {

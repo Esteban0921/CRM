@@ -3,32 +3,50 @@
 import { use, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
 import {
   anonymizeFamily,
   createContract,
   createNote,
   createStudent,
   createTask,
+  createUser,
   deleteNote,
   exportFamily,
   getContracts,
+  confirmInvoicePayment,
   getFamily,
+  getFamilyActivity,
+  getFamilyBilling,
+  getFamilyInvoices,
   getNotes,
   getStudents,
   getTasks,
+  getUsers,
   updateContract,
   updateFamily,
   updateStudent,
   updateTask,
   ApiError,
   type Contract,
+  type ActivityEvent,
   type Family,
+  type FamilyBilling,
+  type FamilyInvoice,
+  type MeResponse,
   type Note,
   type Student,
   type Task,
 } from '@/lib/api';
 import { getStoredToken } from '@/lib/auth-storage';
-import { formatAmount, formatDate } from '@/lib/format';
+import {
+  FAMILY_INVOICE_LABELS,
+  FAMILY_INVOICE_TONES,
+  formatAmount,
+  formatDate,
+} from '@/lib/format';
+import { DownloadDocumentButton } from '@/components/ui/download-document';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -39,12 +57,18 @@ import { useToast } from '@/components/ui/toast';
 
 export default function FamilyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const { notify } = useToast();
   const [family, setFamily] = useState<Family | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [parents, setParents] = useState<MeResponse[]>([]);
+  const [billing, setBilling] = useState<FamilyBilling | null>(null);
+  const [invoices, setInvoices] = useState<FamilyInvoice[]>([]);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirmAnon, setConfirmAnon] = useState(false);
 
@@ -65,6 +89,18 @@ export default function FamilyDetailPage({ params }: { params: Promise<{ id: str
       .catch(() => {});
     getTasks(token, id)
       .then(setTasks)
+      .catch(() => {});
+    getUsers(token, id)
+      .then((rows) => setParents(rows.filter((member) => member.role === 'parent')))
+      .catch(() => {});
+    getFamilyBilling(token, id)
+      .then(setBilling)
+      .catch(() => {});
+    getFamilyInvoices(token, undefined, id)
+      .then(setInvoices)
+      .catch(() => setInvoices([]));
+    getFamilyActivity(token, id)
+      .then(setActivity)
       .catch(() => {});
   }
 
@@ -99,6 +135,12 @@ export default function FamilyDetailPage({ params }: { params: Promise<{ id: str
     setConfirmAnon(false);
     notify('Familia anonimizada');
     reload();
+  }
+
+  if (authLoading) return null;
+  if (user && user.role === 'parent') {
+    router.replace('/dashboard');
+    return null;
   }
 
   if (error) return <p className="text-sm text-rose-700">{error}</p>;
@@ -152,11 +194,225 @@ export default function FamilyDetailPage({ params }: { params: Promise<{ id: str
         </div>
       </Dialog>
 
+      <FamilyInvoicesSection familyId={id} invoices={invoices} onChange={reload} />
+      {billing && (
+        <Card>
+          <h2 className="font-medium">Facturación</h2>
+          <dl className="mt-3 grid gap-3 text-sm md:grid-cols-3">
+            <div>
+              <dt className="text-muted">Pendiente</dt>
+              <dd className="mt-1 text-lg font-semibold tabular">
+                {formatAmount(billing.outstanding_amount, billing.currency)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted">Vencido</dt>
+              <dd className="mt-1 text-lg font-semibold tabular">
+                {formatAmount(billing.overdue_amount, billing.currency)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted">Pagadas</dt>
+              <dd className="mt-1 text-lg font-semibold tabular">{billing.paid_count}</dd>
+            </div>
+          </dl>
+        </Card>
+      )}
+
+      <ParentsSection familyId={id} parents={parents} onChange={reload} />
       <StudentsSection familyId={id} students={students} onChange={reload} />
       <ContractsSection students={students} contracts={familyContracts} onChange={reload} />
       <NotesSection familyId={id} notes={notes} onChange={reload} />
       <TasksSection familyId={id} tasks={tasks} onChange={reload} />
+      <ActivitySection events={activity} />
     </div>
+  );
+}
+
+function FamilyInvoicesSection({
+  familyId,
+  invoices,
+  onChange,
+}: {
+  familyId: string;
+  invoices: FamilyInvoice[];
+  onChange: () => void;
+}) {
+  const { notify } = useToast();
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  return (
+    <Card className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-medium">Facturas</h2>
+        <Link
+          href={`/dashboard/invoices?family_id=${familyId}`}
+          className="text-sm text-brand hover:underline"
+        >
+          Ver en la cola
+        </Link>
+      </div>
+      {invoices.length === 0 ? (
+        <p className="text-sm text-muted">No hay facturas de esta familia.</p>
+      ) : (
+        <ul className="flex flex-col gap-2 text-sm">
+          {invoices.map((invoice) => (
+            <li
+              key={invoice.id}
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2 last:border-0 last:pb-0"
+            >
+              <div>
+                <p className="tabular font-medium">
+                  {formatAmount(invoice.amount, invoice.currency)}
+                </p>
+                <p className="text-xs text-muted">{formatDate(invoice.issue_date)}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge tone={FAMILY_INVOICE_TONES[invoice.status] ?? 'slate'}>
+                  {FAMILY_INVOICE_LABELS[invoice.status] ?? invoice.status}
+                </Badge>
+                <DownloadDocumentButton documentId={invoice.document_id} label="PDF" />
+                {(invoice.status === 'sent' || invoice.status === 'overdue') && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={confirming === invoice.id}
+                    onClick={async () => {
+                      const token = getStoredToken();
+                      if (!token) return;
+                      setConfirming(invoice.id);
+                      try {
+                        await confirmInvoicePayment(token, invoice.id);
+                        notify('Cobro confirmado.');
+                        onChange();
+                      } catch (err) {
+                        notify(
+                          err instanceof ApiError ? err.message : 'No se pudo confirmar el cobro',
+                          'error',
+                        );
+                      } finally {
+                        setConfirming(null);
+                      }
+                    }}
+                  >
+                    {confirming === invoice.id ? 'Confirmando...' : 'Confirmar cobro'}
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function ActivitySection({ events }: { events: ActivityEvent[] }) {
+  return (
+    <Card className="flex flex-col gap-3">
+      <h2 className="font-medium">Historial</h2>
+      {events.length === 0 ? (
+        <p className="text-sm text-muted">Aún no hay cambios registrados en esta ficha.</p>
+      ) : (
+        <ol className="flex flex-col gap-3">
+          {events.map((event, index) => (
+            <li key={`${event.at}-${index}`} className="border-l-2 border-line pl-3 text-sm">
+              <p className="text-xs text-muted">
+                {formatDate(event.at.slice(0, 10))}
+                {event.actor_name ? ` · ${event.actor_name}` : ''}
+              </p>
+              <p className="font-medium text-ink">{event.title}</p>
+              {event.detail && <p className="text-muted">{event.detail}</p>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  );
+}
+
+function ParentsSection({
+  familyId,
+  parents,
+  onChange,
+}: {
+  familyId: string;
+  parents: MeResponse[];
+  onChange: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = getStoredToken();
+    if (!token) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createUser(token, {
+        name,
+        email,
+        password,
+        role: 'parent',
+        family_id: familyId,
+      });
+      setName('');
+      setEmail('');
+      setPassword('');
+      onChange();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se pudo dar de alta al padre');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card className="flex flex-col gap-4">
+      <h2 className="font-medium">Acceso de la familia</h2>
+      <ul className="flex flex-col gap-1 text-sm">
+        {parents.length === 0 ? (
+          <li className="text-muted">Todavía no hay un padre con usuario.</li>
+        ) : (
+          parents.map((parent) => (
+            <li key={parent.id}>
+              {parent.name} <span className="text-muted">· {parent.email}</span>
+            </li>
+          ))
+        )}
+      </ul>
+      <form onSubmit={handleSubmit} className="grid gap-3 md:grid-cols-4 md:items-end">
+        <Input
+          label="Nombre"
+          required
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <Input
+          label="Email"
+          type="email"
+          required
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+        <Input
+          label="Contraseña inicial"
+          type="password"
+          required
+          minLength={8}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+        <Button type="submit" disabled={submitting}>
+          Invitar padre
+        </Button>
+      </form>
+      {error && <p className="text-sm text-rose-700">{error}</p>}
+    </Card>
   );
 }
 

@@ -5,11 +5,14 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { cx } from '@/lib/cx';
 import { Button } from '@/components/ui/button';
-import { IconFamilies, IconHome, IconInbox, IconTruck } from './icons';
+import { IconCredit, IconFamilies, IconHome, IconInbox, IconTasks, IconTruck } from './icons';
 
 const staffLinks = [
   { href: '/dashboard', label: 'Inicio', icon: IconHome },
   { href: '/dashboard/invoices', label: 'Cola de revisión', icon: IconInbox },
+  { href: '/dashboard/tasks', label: 'Tareas', icon: IconTasks },
+  { href: '/dashboard/credit-notes', label: 'Notas de crédito', icon: IconCredit },
+  { href: '/dashboard/emails', label: 'Correos', icon: IconInbox },
   { href: '/dashboard/families', label: 'Familias', icon: IconFamilies },
   { href: '/dashboard/suppliers', label: 'Proveedores', icon: IconTruck },
 ];

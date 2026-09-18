@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
 import { createFamily, getFamilies, ApiError, type Family } from '@/lib/api';
+import { formatAmount } from '@/lib/format';
 import { getStoredToken } from '@/lib/auth-storage';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +18,8 @@ import { PageHeader } from '@/components/ui/page-header';
 import { useToast } from '@/components/ui/toast';
 
 export default function FamiliesPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const { notify } = useToast();
   const [families, setFamilies] = useState<Family[] | null>(null);
   const [name, setName] = useState('');
@@ -22,6 +27,8 @@ export default function FamiliesPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+  const [onlyAttention, setOnlyAttention] = useState(false);
 
   function reload() {
     const token = getStoredToken();
@@ -53,6 +60,12 @@ export default function FamiliesPage() {
     }
   }
 
+  if (authLoading) return null;
+  if (user && user.role === 'parent') {
+    router.replace('/dashboard');
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -81,8 +94,30 @@ export default function FamiliesPage() {
         </form>
       </Dialog>
 
+      {error && !open && <p className="text-sm text-rose-700">{error}</p>}
+      {families && families.length > 0 && (
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
+          <div className="flex-1">
+            <Input
+              label="Filtrar listado"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+            />
+          </div>
+          <label className="flex items-center gap-2 pb-2 text-sm">
+            <input
+              type="checkbox"
+              checked={onlyAttention}
+              onChange={(event) => setOnlyAttention(event.target.checked)}
+            />
+            Solo deuda o sin facturar
+          </label>
+        </div>
+      )}
       {families === null ? (
-        <p className="text-sm text-muted">Cargando...</p>
+        error ? null : (
+          <p className="text-sm text-muted">Cargando...</p>
+        )
       ) : families.length === 0 ? (
         <EmptyState
           title="Todavía no hay familias."
@@ -96,28 +131,53 @@ export default function FamiliesPage() {
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Dirección</th>
+                <th className="px-4 py-3 font-medium">Cobro</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
               </tr>
             </thead>
             <tbody>
-              {families.map((family) => (
-                <tr key={family.id} className="border-b border-line last:border-0">
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/dashboard/families/${family.id}`}
-                      className="font-medium text-brand hover:underline"
-                    >
-                      {family.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-muted">{family.address ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <Badge tone={family.status === 'active' ? 'emerald' : 'slate'}>
-                      {family.status === 'active' ? 'Activa' : 'Inactiva'}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
+              {families
+                .filter((family) => {
+                  const matchesName =
+                    !filter.trim() ||
+                    family.name.toLowerCase().includes(filter.trim().toLowerCase());
+                  const needsAttention =
+                    family.unbilled || Number(family.outstanding_amount ?? 0) > 0;
+                  return matchesName && (!onlyAttention || needsAttention);
+                })
+                .map((family) => (
+                  <tr key={family.id} className="border-b border-line last:border-0">
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/dashboard/families/${family.id}`}
+                        className="font-medium text-brand hover:underline"
+                      >
+                        {family.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-muted">{family.address ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      {family.unbilled ? (
+                        <Badge tone="amber">Sin facturar</Badge>
+                      ) : Number(family.overdue_amount ?? 0) > 0 ? (
+                        <span className="text-rose-700 tabular">
+                          {formatAmount(family.overdue_amount, family.currency)} vencida
+                        </span>
+                      ) : Number(family.outstanding_amount ?? 0) > 0 ? (
+                        <span className="tabular">
+                          {formatAmount(family.outstanding_amount, family.currency)}
+                        </span>
+                      ) : (
+                        <span className="text-muted">Al día</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={family.status === 'active' ? 'emerald' : 'slate'}>
+                        {family.status === 'active' ? 'Activa' : 'Inactiva'}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </Card>

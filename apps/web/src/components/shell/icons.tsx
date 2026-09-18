@@ -28,6 +28,25 @@ export function IconTruck() {
   );
 }
 
+export function IconTasks() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
+      <path
+        fill="currentColor"
+        d="M9 11.5 6.5 9 5 10.5 9 14.5 19 4.5 17.5 3 9 11.5zM4 19h16v2H4v-2zM4 3h9v2H4V3z"
+      />
+    </svg>
+  );
+}
+
+export function IconCredit() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
+      <path fill="currentColor" d="M4 4h16v16H4V4zm2 2v12h12V6H6zm2 3h8v2H8V9zm0 4h5v2H8v-2z" />
+    </svg>
+  );
+}
+
 export function IconHome() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">

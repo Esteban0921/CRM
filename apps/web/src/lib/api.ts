@@ -49,7 +49,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new ApiError(response.status, message);
   }
 
-  return response.json() as Promise<T>;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }
 
 export function login(email: string, password: string): Promise<TokenResponse> {
@@ -81,13 +88,20 @@ export interface FamilyInvoice {
   status: FamilyInvoiceStatus;
   extracted_data: Record<string, unknown> | null;
   confidence: number | null;
+  possible_duplicate?: boolean;
+  days_in_queue?: number | null;
+  days_overdue?: number | null;
 }
 
 export function getFamilyInvoices(
   token: string,
   status?: FamilyInvoiceStatus,
+  familyId?: string,
 ): Promise<FamilyInvoice[]> {
-  const query = status ? `?status=${status}` : '';
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (familyId) params.set('family_id', familyId);
+  const query = params.toString() ? `?${params.toString()}` : '';
   return request<FamilyInvoice[]>(`/family-invoices${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -116,10 +130,15 @@ export interface Family {
   name: string;
   address: string | null;
   status: FamilyStatus;
+  outstanding_amount?: string;
+  overdue_amount?: string;
+  unbilled?: boolean;
+  currency?: string;
 }
 
-export function getFamilies(token: string): Promise<Family[]> {
-  return request<Family[]>('/families', authed(token));
+export function getFamilies(token: string, q?: string): Promise<Family[]> {
+  const query = q && q.trim().length >= 2 ? `?q=${encodeURIComponent(q.trim())}` : '';
+  return request<Family[]>(`/families${query}`, authed(token));
 }
 
 export function getFamily(token: string, familyId: string): Promise<Family> {
@@ -215,6 +234,7 @@ export type TaskStatus = 'pending' | 'done' | 'cancelled';
 export interface Task {
   id: string;
   family_id: string;
+  family_name: string | null;
   title: string;
   description: string | null;
   due_date: string | null;
@@ -223,8 +243,9 @@ export interface Task {
   created_by: string;
 }
 
-export function getTasks(token: string, familyId: string): Promise<Task[]> {
-  return request<Task[]>(`/tasks?family_id=${familyId}`, authed(token));
+export function getTasks(token: string, familyId?: string): Promise<Task[]> {
+  const query = familyId ? `?family_id=${familyId}` : '';
+  return request<Task[]>(`/tasks${query}`, authed(token));
 }
 
 export function createTask(
@@ -360,4 +381,315 @@ export function runIngestion(token: string, useDemoInbox = true): Promise<Ingest
     '/ingestion/run',
     authed(token, { method: 'POST', body: JSON.stringify({ use_demo_inbox: useDemoInbox }) }),
   );
+}
+
+export function createUser(
+  token: string,
+  payload: {
+    email: string;
+    password: string;
+    name: string;
+    role: UserRole;
+    family_id?: string;
+  },
+): Promise<MeResponse> {
+  return request<MeResponse>(
+    '/users',
+    authed(token, { method: 'POST', body: JSON.stringify(payload) }),
+  );
+}
+
+export function getUsers(token: string, familyId?: string): Promise<MeResponse[]> {
+  const query = familyId ? `?family_id=${familyId}` : '';
+  return request<MeResponse[]>(`/users${query}`, authed(token));
+}
+
+export function createSupplier(
+  token: string,
+  payload: {
+    name: string;
+    tax_id?: string;
+    email?: string;
+    category?: SupplierCategory;
+  },
+): Promise<Supplier> {
+  return request<Supplier>(
+    '/suppliers',
+    authed(token, { method: 'POST', body: JSON.stringify(payload) }),
+  );
+}
+
+export function updateSupplier(
+  token: string,
+  supplierId: string,
+  payload: Partial<Pick<Supplier, 'name' | 'tax_id' | 'email' | 'category'>>,
+): Promise<Supplier> {
+  return request<Supplier>(
+    `/suppliers/${supplierId}`,
+    authed(token, { method: 'PATCH', body: JSON.stringify(payload) }),
+  );
+}
+
+export interface FamilyBilling {
+  outstanding_amount: string;
+  overdue_amount: string;
+  overdue_count: number;
+  sent_count: number;
+  paid_count: number;
+  due_soon_count?: number;
+  due_soon_amount?: string;
+  currency: string;
+}
+
+export interface StaffBillingSummary {
+  pending_review_count: number;
+  overdue_count: number;
+  families_with_debt: number;
+  families_count: number;
+  overdue_amount: string;
+  outstanding_amount: string;
+  year_month: string;
+  expected_amount: string;
+  collected_amount: string;
+  due_soon_count: number;
+  due_soon_amount: string;
+  pending_tasks: number;
+  failed_emails: number;
+  unbilled_families: number;
+  currency: string;
+}
+
+export interface UnbilledFamily {
+  id: string;
+  name: string;
+  expected_amount: string;
+  currency: string;
+}
+
+export function getUnbilledFamilies(token: string): Promise<UnbilledFamily[]> {
+  return request<UnbilledFamily[]>('/billing/unbilled', authed(token));
+}
+
+export function createUnbilledTasks(
+  token: string,
+): Promise<{ created: number; skipped: number; year_month: string }> {
+  return request('/billing/unbilled/tasks', authed(token, { method: 'POST' }));
+}
+
+export interface InboxItem {
+  kind: string;
+  title: string;
+  href: string;
+  count: number;
+}
+
+export function getNotificationInbox(token: string): Promise<InboxItem[]> {
+  return request<InboxItem[]>('/notifications/inbox', authed(token));
+}
+
+export function getMyNotifications(token: string): Promise<InboxItem[]> {
+  return request<InboxItem[]>('/notifications/mine', authed(token));
+}
+
+export function sendDueSoonReminders(token: string): Promise<{ sent: number; families: number }> {
+  return request('/notifications/due-soon-reminders', authed(token, { method: 'POST' }));
+}
+
+export function bulkUpdateFamilyInvoices(
+  token: string,
+  payload: { ids: string[]; status?: FamilyInvoiceStatus; family_id?: string },
+): Promise<{ updated: number; failed: { id: string; detail: string }[] }> {
+  return request(
+    '/family-invoices/bulk',
+    authed(token, { method: 'POST', body: JSON.stringify(payload) }),
+  );
+}
+
+export function claimInvoicePayment(token: string, invoiceId: string): Promise<Task> {
+  return request(`/family-invoices/${invoiceId}/claim-payment`, authed(token, { method: 'POST' }));
+}
+
+export function confirmInvoicePayment(token: string, invoiceId: string): Promise<FamilyInvoice> {
+  return request(
+    `/family-invoices/${invoiceId}/confirm-payment`,
+    authed(token, { method: 'POST' }),
+  );
+}
+
+export const PAYMENT_CLAIM_TITLE = 'El padre indica que ha pagado';
+
+export function invoiceIdFromClaim(description: string | null | undefined): string | null {
+  const match = description?.match(/^invoice:([0-9a-f-]{36})/i);
+  return match?.[1] ?? null;
+}
+
+export interface FamilyMonthRow {
+  id: string;
+  name: string;
+  expected_amount: string;
+  collected_amount: string;
+  outstanding_amount: string;
+  overdue_amount: string;
+  unbilled: boolean;
+  currency: string;
+}
+
+export interface MonthReport {
+  year_month: string;
+  families: FamilyMonthRow[];
+}
+
+export function getMonthReport(token: string): Promise<MonthReport> {
+  return request<MonthReport>('/billing/month-report', authed(token));
+}
+
+export interface AtRiskFamily {
+  id: string;
+  name: string;
+  overdue_amount: string;
+  overdue_count: number;
+  pending_tasks: number;
+}
+
+export function getAtRiskFamilies(token: string): Promise<AtRiskFamily[]> {
+  return request<AtRiskFamily[]>('/billing/at-risk', authed(token));
+}
+
+export interface IngestedEmail {
+  id: string;
+  gmail_id: string;
+  subject: string | null;
+  from_address: string | null;
+  processing_status: 'pending' | 'processing' | 'processed' | 'failed' | 'ignored';
+  error_message: string | null;
+  created_at: string;
+  document_count: number;
+}
+
+export function getEmails(token: string, status?: string): Promise<IngestedEmail[]> {
+  const query = status ? `?status=${status}` : '';
+  return request<IngestedEmail[]>(`/emails${query}`, authed(token));
+}
+
+export function getFamilyBilling(token: string, familyId: string): Promise<FamilyBilling> {
+  return request<FamilyBilling>(`/families/${familyId}/billing`, authed(token));
+}
+
+export function getBillingSummary(token: string): Promise<StaffBillingSummary> {
+  return request<StaffBillingSummary>('/billing/summary', authed(token));
+}
+
+export function sendOverdueReminders(token: string): Promise<{ sent: number; families: number }> {
+  return request('/notifications/overdue-reminders', authed(token, { method: 'POST' }));
+}
+
+export type DocumentType =
+  'family_invoice' | 'supplier_invoice' | 'credit_note' | 'other' | 'unknown';
+
+export interface StoredDocument {
+  id: string;
+  document_type: DocumentType;
+  original_filename: string | null;
+  mime_type: string | null;
+  created_at: string;
+}
+
+export function getDocuments(
+  token: string,
+  documentType?: DocumentType,
+): Promise<StoredDocument[]> {
+  const query = documentType ? `?document_type=${documentType}` : '';
+  return request<StoredDocument[]>(`/documents${query}`, authed(token));
+}
+
+export async function downloadDocument(
+  token: string,
+  documentId: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`${API_URL}/documents/${documentId}/file`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401 && typeof window !== 'undefined') {
+    clearStoredToken();
+    if (!window.location.pathname.startsWith('/login')) {
+      window.location.assign('/login?expired=1');
+    }
+  }
+  if (!response.ok) {
+    throw new ApiError(response.status, 'No se pudo descargar el documento');
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const match = /filename="?([^"]+)"?/i.exec(disposition);
+  return { blob, filename: match?.[1] ?? 'factura.pdf' };
+}
+
+export type SearchHitType = 'family' | 'student' | 'family_invoice' | 'supplier';
+
+export interface SearchHit {
+  type: SearchHitType;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  family_id: string | null;
+}
+
+export function search(token: string, q: string): Promise<{ hits: SearchHit[] }> {
+  return request(`/search?q=${encodeURIComponent(q)}`, authed(token));
+}
+
+export interface ActivityEvent {
+  at: string;
+  kind: 'audit' | 'note';
+  title: string;
+  detail: string | null;
+  actor_name: string | null;
+}
+
+export function getFamilyActivity(token: string, familyId: string): Promise<ActivityEvent[]> {
+  return request(`/families/${familyId}/activity`, authed(token));
+}
+
+export async function downloadFamilyInvoicesCsv(
+  token: string,
+  status?: FamilyInvoiceStatus,
+): Promise<{ blob: Blob; filename: string }> {
+  const query = status ? `?status=${status}` : '';
+  const response = await fetch(`${API_URL}/family-invoices/export.csv${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401 && typeof window !== 'undefined') {
+    clearStoredToken();
+    if (!window.location.pathname.startsWith('/login')) {
+      window.location.assign('/login?expired=1');
+    }
+  }
+  if (!response.ok) {
+    throw new ApiError(response.status, 'No se pudo exportar el CSV');
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const match = /filename="?([^"]+)"?/i.exec(disposition);
+  return { blob, filename: match?.[1] ?? 'facturas.csv' };
+}
+
+export async function downloadMonthReportCsv(
+  token: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`${API_URL}/billing/month-report.csv`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401 && typeof window !== 'undefined') {
+    clearStoredToken();
+    if (!window.location.pathname.startsWith('/login')) {
+      window.location.assign('/login?expired=1');
+    }
+  }
+  if (!response.ok) {
+    throw new ApiError(response.status, 'No se pudo exportar el CSV');
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const match = /filename="?([^"]+)"?/i.exec(disposition);
+  return { blob, filename: match?.[1] ?? 'cierre.csv' };
 }
