@@ -37,6 +37,7 @@ def test_staff_can_create_and_complete_a_task(client, db_session):
 
     assert created.status_code == 201
     assert created.json()["status"] == "pending"
+    assert created.json()["family_name"] == "Familia Tarea"
     assert updated.json()["status"] == "done"
 
 

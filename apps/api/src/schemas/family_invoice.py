@@ -33,3 +33,6 @@ class FamilyInvoiceRead(BaseModel):
     status: FamilyInvoiceStatus
     extracted_data: dict | None
     confidence: float | None
+    possible_duplicate: bool = False
+    days_in_queue: int | None = None
+    days_overdue: int | None = None

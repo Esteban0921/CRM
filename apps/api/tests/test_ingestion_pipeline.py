@@ -1,9 +1,11 @@
 import io
 import zipfile
+from pathlib import Path
 
 from ingestion.fake_gmail_client import FakeGmailClient
 from ingestion.gmail_client import RawAttachment, RawEmail
 from ingestion.pipeline import ingest_new_emails
+from ingestion.scanning import ScanResult
 from models.document import Document, DocumentType
 from models.email import Email, EmailProcessingStatus
 from models.family import Family
@@ -95,6 +97,8 @@ def test_ingests_zip_with_two_members(db_session, tmp_path):
     members = [d for d in documents if d.is_zip_member]
     assert len(members) == 2
     assert all(m.parent_zip_id == zip_doc.id for m in members)
+    assert Path(zip_doc.file_path).is_file()
+    assert Path(zip_doc.file_path).resolve().is_relative_to(tmp_path.resolve())
 
 
 def test_processed_message_is_not_returned_as_new_by_the_client(db_session, tmp_path):
@@ -238,3 +242,107 @@ def test_zip_bomb_marks_email_as_failed_not_processed(db_session, tmp_path):
     assert email.processing_status == EmailProcessingStatus.FAILED
     assert email.error_message is not None
     assert client.labels_for("msg-5") == ["AUTO/FAILED"]
+
+
+def test_attachment_filename_cannot_escape_storage_dir(db_session, tmp_path):
+    client = FakeGmailClient(
+        [
+            RawEmail(
+                gmail_id="msg-trav",
+                attachments=[
+                    RawAttachment(
+                        filename="../escape.pdf",
+                        mime_type="application/pdf",
+                        content=FACTURA_TEXTO,
+                    )
+                ],
+            )
+        ]
+    )
+
+    ingest_new_emails(client, db_session, storage_dir=tmp_path)
+
+    stored = list(tmp_path.glob("*"))
+    assert stored
+    for path in stored:
+        assert path.resolve().is_relative_to(tmp_path.resolve())
+    assert not (tmp_path.parent / "escape.pdf").exists()
+
+
+class _BoomScanner:
+    def scan(self, _file_path):
+        raise RuntimeError("scanner down")
+
+
+def test_unexpected_scan_error_marks_email_failed_not_500(db_session, tmp_path):
+    client = FakeGmailClient(
+        [
+            RawEmail(
+                gmail_id="msg-boom",
+                attachments=[
+                    RawAttachment(
+                        filename="factura.pdf", mime_type="application/pdf", content=FACTURA_TEXTO
+                    )
+                ],
+            )
+        ]
+    )
+
+    summary = ingest_new_emails(client, db_session, storage_dir=tmp_path, scanner=_BoomScanner())
+
+    assert summary.failed == ["msg-boom"]
+    email = db_session.query(Email).filter(Email.gmail_id == "msg-boom").one()
+    assert email.processing_status == EmailProcessingStatus.FAILED
+    assert "scanner down" in (email.error_message or "")
+
+
+class _DirtyScanner:
+    def scan(self, _file_path):
+        return ScanResult(clean=False, detail="Eicar-Test-Signature")
+
+
+def test_dirty_zip_is_kept_but_not_extracted(db_session, tmp_path):
+    zip_content = _zip_bytes({"factura.pdf": FACTURA_TEXTO})
+    client = FakeGmailClient(
+        [
+            RawEmail(
+                gmail_id="msg-dirty-zip",
+                attachments=[
+                    RawAttachment(
+                        filename="paquete.zip", mime_type="application/zip", content=zip_content
+                    )
+                ],
+            )
+        ]
+    )
+
+    ingest_new_emails(client, db_session, storage_dir=tmp_path, scanner=_DirtyScanner())
+
+    documents = db_session.query(Document).all()
+    assert len(documents) == 1
+    assert documents[0].document_type == DocumentType.OTHER
+    assert Path(documents[0].file_path).is_file()
+
+
+def test_credit_note_is_stored_without_creating_a_family_invoice(db_session, tmp_path):
+    client = FakeGmailClient(
+        [
+            RawEmail(
+                gmail_id="msg-credit",
+                subject="Nota de crédito nº 12",
+                attachments=[
+                    RawAttachment(
+                        filename="abono.pdf",
+                        mime_type="application/pdf",
+                        content=FACTURA_TEXTO,
+                    )
+                ],
+            )
+        ]
+    )
+
+    ingest_new_emails(client, db_session, storage_dir=tmp_path)
+
+    document = db_session.query(Document).one()
+    assert document.document_type == DocumentType.CREDIT_NOTE
+    assert db_session.query(FamilyInvoice).count() == 0

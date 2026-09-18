@@ -78,6 +78,38 @@ def test_parent_can_read_own_family(client, db_session):
     assert response.json()["id"] == str(seed["family_a"].id)
 
 
+def test_staff_family_list_includes_billing_snapshot(client, db_session):
+    from models.document import Document, DocumentType
+    from models.email import Email
+    from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
+
+    seed = _seed_two_families(db_session)
+    email = Email(gmail_id="snap-1")
+    db_session.add(email)
+    db_session.commit()
+    document = Document(
+        email_id=email.id, document_type=DocumentType.FAMILY_INVOICE, file_path="f.pdf"
+    )
+    db_session.add(document)
+    db_session.commit()
+    invoice = FamilyInvoice(
+        document_id=document.id,
+        family_id=seed["family_a"].id,
+        status=FamilyInvoiceStatus.OVERDUE,
+        amount=Decimal("40.00"),
+        due_date=datetime.date(2020, 1, 1),
+    )
+    db_session.add(invoice)
+    db_session.commit()
+
+    listed = client.get("/families", headers=_auth_header(seed["staff"])).json()
+    by_name = {row["name"]: row for row in listed}
+    assert by_name["Familia A"]["overdue_amount"] == "40.00"
+    assert by_name["Familia A"]["outstanding_amount"] == "40.00"
+    as_parent = client.get("/families", headers=_auth_header(seed["parent_a"]))
+    assert as_parent.status_code == 403
+
+
 def test_parent_students_list_is_forced_to_own_family_even_if_other_id_requested(
     client, db_session
 ):

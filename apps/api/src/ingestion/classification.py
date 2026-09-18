@@ -33,11 +33,17 @@ def classify_document(
     if _CREDIT_NOTE_KEYWORDS.search(text):
         return DocumentType.CREDIT_NOTE
 
-    if (
-        from_address
-        and known_supplier_addresses
-        and from_address.lower() in known_supplier_addresses
-    ):
+    sender = _sender_email(from_address)
+    if sender and known_supplier_addresses and sender in known_supplier_addresses:
         return DocumentType.SUPPLIER_INVOICE
 
     return DocumentType.FAMILY_INVOICE
+
+
+def _sender_email(from_address: str | None) -> str | None:
+    """Acepta `facturas@repsol.com` y `Repsol <facturas@repsol.com>`."""
+    if not from_address:
+        return None
+    match = re.search(r"<([^>]+)>", from_address)
+    raw = match.group(1) if match else from_address
+    return raw.strip().lower() or None

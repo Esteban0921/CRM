@@ -1,26 +1,53 @@
+import csv
+import datetime
+import io
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from audit import record_field_changes
+from billing import (
+    duplicate_key,
+    duplicate_keys,
+    invoice_days_in_queue,
+    invoice_days_overdue,
+    promote_overdue_invoices,
+)
 from db import get_db
 from dependencies import ensure_family_access, get_current_user, require_role
 from models.audit_log import AuditedEntityType
 from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
+from models.task import Task, TaskStatus
 from models.user import User, UserRole
 from notifications.email_sender import EmailSender, get_email_sender
-from notifications.service import notify_new_family_invoice
+from notifications.service import (
+    PAYMENT_CLAIM_TITLE,
+    close_payment_claim_tasks,
+    notify_new_family_invoice,
+)
+from routers.tasks import _with_family_names as _tasks_with_family_names
+from schemas.billing import (
+    BulkItemError,
+    DuplicateGroup,
+    FamilyInvoiceBulkResult,
+    FamilyInvoiceBulkUpdate,
+)
 from schemas.family_invoice import FamilyInvoiceRead, FamilyInvoiceUpdate
+from schemas.task import TaskRead
 
 router = APIRouter(prefix="/family-invoices", tags=["family-invoices"])
 
 
-def _with_family_names(db: Session, invoices: list[FamilyInvoice]) -> list[FamilyInvoiceRead]:
+def _with_family_names(
+    db: Session, invoices: list[FamilyInvoice], *, hide_extracted: bool = False
+) -> list[FamilyInvoiceRead]:
     """El tablero kanban (staff) necesita un nombre legible, no un UUID crudo.
     `FamilyInvoice` no tiene `relationship()` a `Family` (estilo del resto del
     proyecto): se resuelve con una sola query extra en vez de N+1.
+    TASK-0074: el padre nunca recibe `extracted_data` (RULE-015).
     """
     family_ids = {invoice.family_id for invoice in invoices if invoice.family_id is not None}
     names = (
@@ -28,9 +55,16 @@ def _with_family_names(db: Session, invoices: list[FamilyInvoice]) -> list[Famil
         if family_ids
         else {}
     )
+    dupes = duplicate_keys(invoices)
     return [
         FamilyInvoiceRead.model_validate(invoice).model_copy(
-            update={"family_name": names.get(invoice.family_id)}
+            update={
+                "family_name": names.get(invoice.family_id),
+                "possible_duplicate": duplicate_key(invoice) in dupes,
+                "days_in_queue": invoice_days_in_queue(invoice),
+                "days_overdue": invoice_days_overdue(invoice),
+                **({"extracted_data": None} if hide_extracted else {}),
+            }
         )
         for invoice in invoices
     ]
@@ -39,23 +73,113 @@ def _with_family_names(db: Session, invoices: list[FamilyInvoice]) -> list[Famil
 @router.get("", response_model=list[FamilyInvoiceRead])
 def list_family_invoices(
     invoice_status: FamilyInvoiceStatus | None = Query(default=None, alias="status"),
+    family_id: uuid.UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[FamilyInvoiceRead]:
+    promote_overdue_invoices(db)
+    query = _scoped_invoice_query(db, user, invoice_status, family_id)
+    if query is None:
+        return []
+    invoices = query.order_by(FamilyInvoice.confidence.asc().nullsfirst()).all()
+    return _with_family_names(db, invoices, hide_extracted=user.role == UserRole.PARENT)
+
+
+def _scoped_invoice_query(
+    db: Session,
+    user: User,
+    invoice_status: FamilyInvoiceStatus | None,
+    family_id: uuid.UUID | None = None,
+):
     query = db.query(FamilyInvoice)
     if user.role == UserRole.PARENT:
         if user.family_id is None:
-            return []
-        # RULE-017: el padre no ve facturas que staff todavía no ha revisado.
+            return None
         query = query.filter(
             FamilyInvoice.family_id == user.family_id,
             FamilyInvoice.status != FamilyInvoiceStatus.PENDING_REVIEW,
         )
+    elif family_id is not None:
+        query = query.filter(FamilyInvoice.family_id == family_id)
     if invoice_status is not None:
         query = query.filter(FamilyInvoice.status == invoice_status)
-    # Cola de revision (TASK-0014): confianza mas baja primero.
-    invoices = query.order_by(FamilyInvoice.confidence.asc().nullsfirst()).all()
-    return _with_family_names(db, invoices)
+    return query
+
+
+@router.get("/duplicates", response_model=list[DuplicateGroup])
+def list_duplicate_invoices(
+    db: Session = Depends(get_db),
+    staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+) -> list[DuplicateGroup]:
+    _ = staff
+    promote_overdue_invoices(db)
+    invoices = db.query(FamilyInvoice).all()
+    grouped: dict[tuple, list[FamilyInvoice]] = {}
+    for invoice in invoices:
+        key = duplicate_key(invoice)
+        if key is None:
+            continue
+        grouped.setdefault(key, []).append(invoice)
+    family_ids = {key[0] for key, group in grouped.items() if len(group) > 1}
+    names = (
+        dict(db.query(Family.id, Family.name).filter(Family.id.in_(family_ids)).all())
+        if family_ids
+        else {}
+    )
+    result = []
+    for (family_id, amount, issue_date), group in grouped.items():
+        if len(group) < 2:
+            continue
+        result.append(
+            DuplicateGroup(
+                family_id=family_id,
+                family_name=names.get(family_id),
+                amount=amount,
+                issue_date=issue_date,
+                invoice_ids=[invoice.id for invoice in group],
+            )
+        )
+    return result
+
+
+@router.get("/export.csv")
+def export_family_invoices_csv(
+    invoice_status: FamilyInvoiceStatus | None = Query(default=None, alias="status"),
+    family_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """TASK-0055. El padre solo exporta facturas ya publicadas de su familia."""
+    promote_overdue_invoices(db)
+    query = _scoped_invoice_query(db, user, invoice_status, family_id)
+    if query is None:
+        invoices: list[FamilyInvoice] = []
+    else:
+        invoices = query.order_by(FamilyInvoice.issue_date.desc().nullslast()).all()
+    rows = _with_family_names(db, invoices)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        ["id", "familia", "importe", "moneda", "fecha_emision", "fecha_vencimiento", "estado"]
+    )
+    for invoice in rows:
+        writer.writerow(
+            [
+                str(invoice.id),
+                invoice.family_name or "",
+                invoice.amount if invoice.amount is not None else "",
+                invoice.currency,
+                invoice.issue_date.isoformat() if invoice.issue_date else "",
+                invoice.due_date.isoformat() if invoice.due_date else "",
+                invoice.status.value,
+            ]
+        )
+    filename = "facturas-familias.csv" if user.role != UserRole.PARENT else "mis-facturas.csv"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{invoice_id}", response_model=FamilyInvoiceRead)
@@ -70,7 +194,7 @@ def get_family_invoice(
     ensure_family_access(user, invoice.family_id)
     if user.role == UserRole.PARENT and invoice.status == FamilyInvoiceStatus.PENDING_REVIEW:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
-    return _with_family_names(db, [invoice])[0]
+    return _with_family_names(db, [invoice], hide_extracted=user.role == UserRole.PARENT)[0]
 
 
 @router.patch("/{invoice_id}", response_model=FamilyInvoiceRead)
@@ -86,9 +210,28 @@ def update_family_invoice(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
     previous_status = invoice.status
     changes = payload.model_dump(exclude_unset=True)
+    effective_status = changes.get("status", invoice.status)
+    effective_family_id = changes["family_id"] if "family_id" in changes else invoice.family_id
+    if effective_status != FamilyInvoiceStatus.PENDING_REVIEW and effective_family_id is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Asigna una familia antes de publicar la factura",
+        )
     before = {field: getattr(invoice, field) for field in changes}
     for field, value in changes.items():
         setattr(invoice, field, value)
+    if (
+        invoice.status != FamilyInvoiceStatus.PENDING_REVIEW
+        and invoice.due_date is None
+        and "due_date" not in changes
+    ):
+        base = invoice.issue_date or datetime.date.today()
+        invoice.due_date = base + datetime.timedelta(days=30)
+        if "due_date" not in before:
+            before["due_date"] = None
+            changes["due_date"] = invoice.due_date
+    if previous_status != FamilyInvoiceStatus.PAID and invoice.status == FamilyInvoiceStatus.PAID:
+        close_payment_claim_tasks(db, invoice)
     record_field_changes(
         db,
         entity_type=AuditedEntityType.FAMILY_INVOICE,
@@ -109,3 +252,116 @@ def update_family_invoice(
         except OSError:
             pass
     return _with_family_names(db, [invoice])[0]
+
+
+@router.post("/bulk", response_model=FamilyInvoiceBulkResult)
+def bulk_update_family_invoices(
+    payload: FamilyInvoiceBulkUpdate,
+    db: Session = Depends(get_db),
+    staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+    sender: EmailSender = Depends(get_email_sender),
+) -> FamilyInvoiceBulkResult:
+    if payload.status is None and payload.family_id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Indica status o family_id")
+    changes = {}
+    if payload.status is not None:
+        changes["status"] = payload.status
+    if payload.family_id is not None:
+        changes["family_id"] = payload.family_id
+    updated = 0
+    failed: list[BulkItemError] = []
+    for invoice_id in payload.ids:
+        try:
+            update_family_invoice(
+                invoice_id=invoice_id,
+                payload=FamilyInvoiceUpdate(**changes),
+                db=db,
+                staff=staff,
+                sender=sender,
+            )
+            updated += 1
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else "No se pudo actualizar"
+            failed.append(BulkItemError(id=invoice_id, detail=detail))
+    return FamilyInvoiceBulkResult(updated=updated, failed=failed)
+
+
+@router.post(
+    "/{invoice_id}/claim-payment",
+    response_model=TaskRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def claim_payment(
+    invoice_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TaskRead:
+    """TASK-0068. El padre avisa; staff confirma en la cola. No marca pagada sola."""
+    if user.role != UserRole.PARENT:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Solo el padre puede indicar un pago")
+    invoice = db.get(FamilyInvoice, invoice_id)
+    if invoice is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
+    ensure_family_access(user, invoice.family_id)
+    if invoice.status == FamilyInvoiceStatus.PENDING_REVIEW:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
+    if invoice.status == FamilyInvoiceStatus.PAID:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Esta factura ya consta como pagada")
+    if invoice.family_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
+    marker = f"invoice:{invoice.id}"
+    existing = (
+        db.query(Task)
+        .filter(
+            Task.family_id == invoice.family_id,
+            Task.status == TaskStatus.PENDING,
+            Task.title == PAYMENT_CLAIM_TITLE,
+            Task.description.like(f"{marker}%"),
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Ya hay un aviso de pago pendiente")
+    amount = f"{invoice.amount} {invoice.currency}" if invoice.amount else "importe por confirmar"
+    task = Task(
+        family_id=invoice.family_id,
+        title=PAYMENT_CLAIM_TITLE,
+        description=f"{marker} · {amount}",
+        created_by=user.id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return _tasks_with_family_names(db, [task])[0]
+
+
+@router.post("/{invoice_id}/confirm-payment", response_model=FamilyInvoiceRead)
+def confirm_payment(
+    invoice_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+    sender: EmailSender = Depends(get_email_sender),
+) -> FamilyInvoiceRead:
+    """TASK-0071. Staff confirma el cobro. Cierra el aviso del padre."""
+    invoice = db.get(FamilyInvoice, invoice_id)
+    if invoice is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
+    if invoice.status == FamilyInvoiceStatus.PENDING_REVIEW:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Publica la factura antes de confirmar el cobro",
+        )
+    if invoice.status == FamilyInvoiceStatus.PAID:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Esta factura ya consta como pagada")
+    if invoice.family_id is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Asigna una familia antes de confirmar el cobro",
+        )
+    return update_family_invoice(
+        invoice_id=invoice_id,
+        payload=FamilyInvoiceUpdate(status=FamilyInvoiceStatus.PAID),
+        db=db,
+        staff=staff,
+        sender=sender,
+    )

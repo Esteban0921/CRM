@@ -33,3 +33,4 @@ class TaskRead(BaseModel):
     status: TaskStatus
     assigned_to: uuid.UUID | None
     created_by: uuid.UUID
+    family_name: str | None = None

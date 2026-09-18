@@ -87,15 +87,46 @@ def ingest_new_emails(
             email.processing_status = EmailProcessingStatus.PROCESSED
             client.apply_label(message_id, "AUTO/PROCESSED")
             summary.processed += 1
+            db.commit()
         except UnsafeArchiveError as exc:
             email.processing_status = EmailProcessingStatus.FAILED
             email.error_message = str(exc)
             client.apply_label(message_id, "AUTO/FAILED")
             summary.failed.append(message_id)
-
-        db.commit()
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            failed = db.query(Email).filter(Email.gmail_id == message_id).first()
+            if failed is None:
+                failed = Email(
+                    gmail_id=message_id,
+                    processing_status=EmailProcessingStatus.FAILED,
+                    error_message=str(exc),
+                )
+                db.add(failed)
+            else:
+                failed.processing_status = EmailProcessingStatus.FAILED
+                failed.error_message = str(exc)
+            client.apply_label(message_id, "AUTO/FAILED")
+            summary.failed.append(message_id)
+            db.commit()
 
     return summary
+
+
+def attachment_storage_path(storage: Path, filename: str, unique_id: uuid.UUID) -> Path:
+    """Nunca escribe fuera de `storage`. El nombre del adjunto viene del correo
+    (RULE-016): solo se usa el basename, prefijado con un UUID para no pisar.
+    """
+    root = storage.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    name = Path(filename.replace("\\", "/")).name
+    if not name or name in {".", ".."}:
+        name = "attachment.bin"
+    dest = (root / f"{unique_id}_{name}").resolve()
+    if not dest.is_relative_to(root):
+        dest = (root / f"{unique_id}_attachment.bin").resolve()
+    return dest
 
 
 def _process_attachment(
@@ -141,23 +172,27 @@ def _process_zip_attachment(
     scanner: AttachmentScanner,
     known_supplier_addresses: set[str],
 ) -> None:
+    dest_path = attachment_storage_path(storage, attachment.filename, uuid.uuid4())
+    dest_path.write_bytes(attachment.content)
+    scan_result = scanner.scan(dest_path)
+
+    zip_doc = Document(
+        email_id=email.id,
+        document_type=DocumentType.OTHER if not scan_result.clean else DocumentType.UNKNOWN,
+        file_path=str(dest_path),
+        original_filename=Path(attachment.filename.replace("\\", "/")).name,
+        mime_type=attachment.mime_type,
+        file_hash=_hash_bytes(attachment.content),
+        is_zip_member=False,
+    )
+    db.add(zip_doc)
+    db.flush()
+
+    if not scan_result.clean:
+        return
+
     with tempfile.TemporaryDirectory() as tmp:
-        zip_path = Path(tmp) / attachment.filename
-        zip_path.write_bytes(attachment.content)
-
-        zip_doc = Document(
-            email_id=email.id,
-            document_type=DocumentType.UNKNOWN,
-            file_path=str(storage / attachment.filename),
-            original_filename=attachment.filename,
-            mime_type=attachment.mime_type,
-            file_hash=_hash_bytes(attachment.content),
-            is_zip_member=False,
-        )
-        db.add(zip_doc)
-        db.flush()
-
-        extracted_paths = safe_extract_zip(zip_path, Path(tmp) / "extracted")
+        extracted_paths = safe_extract_zip(dest_path, Path(tmp) / "extracted")
         for member_path in extracted_paths:
             _store_and_classify(
                 db=db,
@@ -186,7 +221,7 @@ def _store_and_classify(
     parent_zip_id: uuid.UUID | None,
     known_supplier_addresses: set[str],
 ) -> None:
-    dest_path = storage / filename
+    dest_path = attachment_storage_path(storage, filename, uuid.uuid4())
     dest_path.write_bytes(content)
 
     scan_result = scanner.scan(dest_path)
@@ -205,7 +240,7 @@ def _store_and_classify(
         email_id=email.id,
         document_type=doc_type,
         file_path=str(dest_path),
-        original_filename=filename,
+        original_filename=Path(filename.replace("\\", "/")).name or filename,
         mime_type=mime_type,
         file_hash=_hash_bytes(content),
         is_zip_member=is_zip_member,

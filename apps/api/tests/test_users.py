@@ -1,3 +1,5 @@
+import uuid
+
 from models.family import Family
 from models.user import User, UserRole
 from security import create_access_token, hash_password
@@ -73,3 +75,65 @@ def test_duplicate_email_returns_conflict(client, db_session):
 
     assert first.status_code == 201
     assert second.status_code == 409
+
+
+def test_staff_cannot_create_admin(client, db_session):
+    headers = _staff_header(db_session)
+
+    response = client.post(
+        "/users",
+        json={
+            "email": "nuevo-admin@example.com",
+            "password": "claveSegura123",
+            "name": "Intruso",
+            "role": "admin",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert db_session.query(User).filter(User.email == "nuevo-admin@example.com").count() == 0
+
+
+def test_admin_can_create_admin(client, db_session):
+    admin = User(
+        email="admin@example.com",
+        password_hash=hash_password("x"),
+        name="Admin",
+        role=UserRole.ADMIN,
+    )
+    db_session.add(admin)
+    db_session.commit()
+    token = create_access_token(user_id=admin.id, role=admin.role.value, family_id=None)
+
+    response = client.post(
+        "/users",
+        json={
+            "email": "otro-admin@example.com",
+            "password": "claveSegura123",
+            "name": "Otro Admin",
+            "role": "admin",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["role"] == "admin"
+
+
+def test_unknown_family_id_is_rejected(client, db_session):
+    headers = _staff_header(db_session)
+
+    response = client.post(
+        "/users",
+        json={
+            "email": "huerfano@example.com",
+            "password": "claveSegura123",
+            "name": "Huerfano",
+            "role": "parent",
+            "family_id": str(uuid.uuid4()),
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422

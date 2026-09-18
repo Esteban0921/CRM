@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -23,3 +24,7 @@ class FamilyRead(BaseModel):
     name: str
     address: str | None
     status: FamilyStatus
+    outstanding_amount: Decimal = Decimal("0.00")
+    overdue_amount: Decimal = Decimal("0.00")
+    unbilled: bool = False
+    currency: str = "EUR"

@@ -18,6 +18,16 @@ def test_known_supplier_address_is_supplier_invoice():
     assert result == DocumentType.SUPPLIER_INVOICE
 
 
+def test_known_supplier_display_name_is_still_supplier_invoice():
+    result = classify_document(
+        filename="factura.pdf",
+        from_address="Repsol Facturacion <facturas@repsol.com>",
+        known_supplier_addresses={"facturas@repsol.com"},
+    )
+
+    assert result == DocumentType.SUPPLIER_INVOICE
+
+
 def test_credit_note_keyword_is_detected():
     result = classify_document(filename="documento.pdf", subject="Nota de crédito nº 123")
 
