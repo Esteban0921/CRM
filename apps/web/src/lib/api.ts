@@ -107,10 +107,18 @@ export function getFamilyInvoices(
   });
 }
 
+/**
+ * `FamilyInvoiceUpdate` del backend siempre acepto importe y fechas, pero el
+ * cliente solo dejaba mandar `status` y `family_id`: no habia ningun sitio en
+ * toda la interfaz donde corregir lo que el extractor saco mal, que es
+ * justamente el trabajo de la cola de revision (TASK-0127).
+ */
 export function updateFamilyInvoice(
   token: string,
   invoiceId: string,
-  payload: Partial<Pick<FamilyInvoice, 'status' | 'family_id'>>,
+  payload: Partial<
+    Pick<FamilyInvoice, 'status' | 'family_id' | 'amount' | 'issue_date' | 'due_date'>
+  >,
 ): Promise<FamilyInvoice> {
   return request<FamilyInvoice>(`/family-invoices/${invoiceId}`, {
     method: 'PATCH',

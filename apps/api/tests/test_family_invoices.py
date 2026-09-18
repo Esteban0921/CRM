@@ -1,4 +1,6 @@
+import datetime
 import uuid
+from decimal import Decimal
 
 from main import app
 from models.audit_log import AuditedEntityType, AuditLog
@@ -23,7 +25,14 @@ def _make_invoice(
     family_id=None,
     confidence=0.5,
     status=FamilyInvoiceStatus.PENDING_REVIEW,
+    amount=Decimal("45.00"),
+    issue_date=datetime.date(2026, 9, 1),
 ) -> FamilyInvoice:
+    """Una factura de prueba nace completa.
+
+    Hasta TASK-0101 se podia publicar una sin importe ni fecha de emision, y
+    varios tests lo hacian: reproducian el bug en vez de comprobar el producto.
+    """
     # uuid4 en vez de un timestamp: dos llamadas seguidas pueden caer en el
     # mismo tick de reloj (sobre todo en Windows) y violar el unique de
     # gmail_id — se observo como fallo intermitente real en esta sesion.
@@ -36,7 +45,12 @@ def _make_invoice(
     db_session.add(document)
     db_session.commit()
     invoice = FamilyInvoice(
-        document_id=document.id, family_id=family_id, confidence=confidence, status=status
+        document_id=document.id,
+        family_id=family_id,
+        confidence=confidence,
+        status=status,
+        amount=amount,
+        issue_date=issue_date,
     )
     db_session.add(invoice)
     db_session.commit()

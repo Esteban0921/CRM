@@ -17,6 +17,12 @@ from billing import (
 )
 from db import get_db
 from dependencies import ensure_family_access, get_current_user, require_role
+from invoice_state import (
+    PUBLISHED_STATES,
+    InvoiceStateError,
+    ensure_publishable,
+    ensure_transition_allowed,
+)
 from models.audit_log import AuditedEntityType
 from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
@@ -212,11 +218,28 @@ def update_family_invoice(
     changes = payload.model_dump(exclude_unset=True)
     effective_status = changes.get("status", invoice.status)
     effective_family_id = changes["family_id"] if "family_id" in changes else invoice.family_id
-    if effective_status != FamilyInvoiceStatus.PENDING_REVIEW and effective_family_id is None:
+    effective_amount = changes["amount"] if "amount" in changes else invoice.amount
+    effective_issue = changes["issue_date"] if "issue_date" in changes else invoice.issue_date
+    effective_due = changes["due_date"] if "due_date" in changes else invoice.due_date
+
+    # Guardia unica: PATCH, /bulk y /confirm-payment pasan todos por aqui
+    # (TASK-0100, TASK-0101).
+    try:
+        ensure_transition_allowed(previous_status, effective_status)
+        if effective_status in PUBLISHED_STATES:
+            ensure_publishable(
+                invoice,
+                family_id=effective_family_id,
+                amount=effective_amount,
+                issue_date=effective_issue,
+                due_date=effective_due,
+            )
+    except InvoiceStateError as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "Asigna una familia antes de publicar la factura",
-        )
+            status.HTTP_409_CONFLICT if exc.conflict else status.HTTP_422_UNPROCESSABLE_CONTENT,
+            str(exc),
+        ) from exc
+
     before = {field: getattr(invoice, field) for field in changes}
     for field, value in changes.items():
         setattr(invoice, field, value)
@@ -270,7 +293,11 @@ def bulk_update_family_invoices(
         changes["family_id"] = payload.family_id
     updated = 0
     failed: list[BulkItemError] = []
-    for invoice_id in payload.ids:
+    # Ids repetidos contaban una misma factura tantas veces como apareciera:
+    # `{"updated": 3}` para una sola factura (TASK-0106).
+    seen: set[uuid.UUID] = set()
+    unique_ids = [i for i in payload.ids if not (i in seen or seen.add(i))]
+    for invoice_id in unique_ids:
         try:
             update_family_invoice(
                 invoice_id=invoice_id,

@@ -72,9 +72,12 @@ test('staff ve las facturas organizadas en un tablero por estado', async ({ page
   await expect(page.getByRole('heading', { name: 'Cola de revisión' })).toBeVisible();
   await expect(page.getByLabel('Filtrar por familia')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Pendiente de revisión' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Familia Garcia/ })).toBeVisible();
+  // Cada tarjeta lleva dentro un <select> con TODAS las familias, asi que
+  // buscar por el nombre de la familia casa con todas las tarjetas. La etiqueta
+  // del selector de familia si es unica por tarjeta.
+  await expect(page.getByLabel('Asignar familia de la factura de Familia Garcia')).toBeVisible();
   await expect(page.getByText('35% confianza')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Familia Lopez/ })).toBeVisible();
+  await expect(page.getByLabel('Asignar familia de la factura de Familia Lopez')).toBeVisible();
 });
 
 test('staff puede cambiar el estado de una factura desde su tarjeta', async ({ page }) => {
@@ -145,4 +148,57 @@ test('staff puede publicar varias facturas a la vez', async ({ page }) => {
       ids: [PENDING_INVOICE.id],
       status: 'sent',
     });
+});
+
+// TASK-0127/TASK-0128: hasta ahora no habia ningun sitio en toda la interfaz
+// donde corregir lo que el extractor sacaba mal. Solo se podia publicar el
+// error o dejar la factura en la cola para siempre.
+const INCOMPLETE_INVOICE = {
+  ...PENDING_INVOICE,
+  id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  amount: null,
+  issue_date: null,
+  confidence: 0,
+};
+
+test('staff corrige el importe y la fecha de una factura mal extraida', async ({ page }) => {
+  await page.route(`${API}/family-invoices`, async (route) => {
+    await route.fulfill({ json: [INCOMPLETE_INVOICE] });
+  });
+
+  let patched: Record<string, unknown> | null = null;
+  await page.route(`${API}/family-invoices/${INCOMPLETE_INVOICE.id}`, async (route) => {
+    patched = route.request().postDataJSON();
+    await route.fulfill({ json: { ...INCOMPLETE_INVOICE, ...patched } });
+  });
+
+  await page.goto('/dashboard/invoices');
+  await expect(page.getByText('Faltan datos')).toBeVisible();
+
+  await page
+    .getByRole('button', {
+      name: `Corregir datos de la factura de ${INCOMPLETE_INVOICE.family_name}`,
+      exact: true,
+    })
+    .click();
+  await page.getByLabel('Importe').fill('121.00');
+  await page.getByLabel('Fecha de emisión').fill('2026-09-05');
+  await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+
+  await expect(page.getByText('Factura corregida')).toBeVisible();
+  expect(patched).toMatchObject({ amount: '121.00', issue_date: '2026-09-05' });
+  await expect(page.getByText(/121,00/)).toBeVisible();
+});
+
+test('no se publica una factura sin importe y se dice por que', async ({ page }) => {
+  await page.route(`${API}/family-invoices`, async (route) => {
+    await route.fulfill({ json: [INCOMPLETE_INVOICE] });
+  });
+
+  await page.goto('/dashboard/invoices');
+  await page
+    .getByLabel(`Cambiar estado de la factura de ${INCOMPLETE_INVOICE.family_name}`)
+    .selectOption('sent');
+
+  await expect(page.getByText(/Indica el importe antes de publicar/)).toBeVisible();
 });

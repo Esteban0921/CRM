@@ -30,6 +30,10 @@ import { getStoredToken } from '@/lib/auth-storage';
 import { formatDate } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { Badge, Chip } from '@/components/ui/badge';
+import {
+  InvoiceFieldsEditor,
+  type InvoiceFieldEdits,
+} from '@/components/invoices/invoice-fields-editor';
 import { Money } from '@/components/ui/money';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -116,9 +120,22 @@ export default function InvoiceReviewQueuePage() {
     const token = getStoredToken();
     if (!token || !invoices) return;
     const current = invoices.find((invoice) => invoice.id === invoiceId);
-    if (nextStatus !== 'pending_review' && current && !current.family_id) {
-      notify('Asigna una familia antes de publicar la factura.', 'error');
-      return;
+    // Misma regla que el backend (TASK-0101), aqui solo para no hacer ir y
+    // volver: se publicaba sin aviso y el padre veia «Importe pendiente» en
+    // negrita, con un total de deuda que ademas no la sumaba (TASK-0128).
+    if (nextStatus !== 'pending_review' && current) {
+      if (!current.family_id) {
+        notify('Asigna una familia antes de publicar la factura.', 'error');
+        return;
+      }
+      if (current.amount === null) {
+        notify('Indica el importe antes de publicar: el padre verá «importe pendiente».', 'error');
+        return;
+      }
+      if (current.issue_date === null) {
+        notify('Indica la fecha de emisión antes de publicar.', 'error');
+        return;
+      }
     }
     const previous = invoices;
     setInvoices(
@@ -142,6 +159,25 @@ export default function InvoiceReviewQueuePage() {
     const nextStatus = over.id as FamilyInvoiceStatus;
     if (!invoice || invoice.status === nextStatus) return;
     moveTo(invoice.id, nextStatus);
+  }
+
+  async function saveInvoiceFields(invoiceId: string, edits: InvoiceFieldEdits) {
+    const token = getStoredToken();
+    if (!token || !invoices) return;
+    const previous = invoices;
+    setInvoices(
+      invoices.map((invoice) => (invoice.id === invoiceId ? { ...invoice, ...edits } : invoice)),
+    );
+    try {
+      const saved = await updateFamilyInvoice(token, invoiceId, edits);
+      setInvoices((current) =>
+        (current ?? []).map((invoice) => (invoice.id === invoiceId ? saved : invoice)),
+      );
+      notify('Factura corregida');
+    } catch (err) {
+      setInvoices(previous);
+      notify(err instanceof ApiError ? err.message : 'No se pudieron guardar los cambios', 'error');
+    }
   }
 
   async function assignFamily(invoiceId: string, familyId: string | null) {
@@ -315,6 +351,7 @@ export default function InvoiceReviewQueuePage() {
                 onToggleSelected={toggleSelected}
                 onMove={moveTo}
                 onAssignFamily={assignFamily}
+                onSaveFields={saveInvoiceFields}
               />
             ))}
           </div>
@@ -325,6 +362,7 @@ export default function InvoiceReviewQueuePage() {
                 families={families}
                 onMove={moveTo}
                 onAssignFamily={assignFamily}
+                onSaveFields={saveInvoiceFields}
                 dragging
               />
             ) : null}
@@ -343,6 +381,7 @@ function Column({
   onToggleSelected,
   onMove,
   onAssignFamily,
+  onSaveFields,
 }: {
   column: { status: FamilyInvoiceStatus; label: string; accent: string };
   invoices: FamilyInvoice[];
@@ -351,6 +390,7 @@ function Column({
   onToggleSelected: (invoiceId: string) => void;
   onMove: (invoiceId: string, nextStatus: FamilyInvoiceStatus) => void;
   onAssignFamily: (invoiceId: string, familyId: string | null) => void;
+  onSaveFields: (invoiceId: string, edits: InvoiceFieldEdits) => Promise<void>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.status });
 
@@ -380,6 +420,7 @@ function Column({
               onToggleSelected={onToggleSelected}
               onMove={onMove}
               onAssignFamily={onAssignFamily}
+              onSaveFields={onSaveFields}
             />
           ))
         )}
@@ -395,6 +436,7 @@ function InvoiceCard({
   onToggleSelected,
   onMove,
   onAssignFamily,
+  onSaveFields,
   dragging = false,
 }: {
   invoice: FamilyInvoice;
@@ -403,6 +445,7 @@ function InvoiceCard({
   onToggleSelected?: (invoiceId: string) => void;
   onMove: (invoiceId: string, nextStatus: FamilyInvoiceStatus) => void;
   onAssignFamily: (invoiceId: string, familyId: string | null) => void;
+  onSaveFields: (invoiceId: string, edits: InvoiceFieldEdits) => Promise<void>;
   dragging?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: invoice.id });
@@ -475,6 +518,12 @@ function InvoiceCard({
         </div>
         <div onPointerDown={(event) => event.stopPropagation()}>
           <DownloadDocumentButton documentId={invoice.document_id} label="Descargar PDF" />
+        </div>
+        <div onPointerDown={(event) => event.stopPropagation()}>
+          <InvoiceFieldsEditor
+            invoice={invoice}
+            onSave={(edits) => onSaveFields(invoice.id, edits)}
+          />
         </div>
         <Select
           aria-label={`Asignar familia de la factura de ${invoice.family_name ?? 'sin asignar'}`}
