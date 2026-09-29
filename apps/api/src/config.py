@@ -18,15 +18,18 @@ class Settings(BaseSettings):
     # lo que se lee en la app es `cors_origin_list`, que fusiona ambos.
     cors_origin: str = ""
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
-    database_url: str = "postgresql+psycopg://crm:crm@localhost:5432/crm_transporte"
+    # Servicios de docker-compose.yml por 127.0.0.1, no por `localhost`: este
+    # resuelve primero a ::1, donde Docker no publica nada (TASK-0089), y cada
+    # conexion nueva espera el timeout de IPv6 antes de probar IPv4 (TASK-0181).
+    database_url: str = "postgresql+psycopg://crm:crm@127.0.0.1:5432/crm_transporte"
     jwt_secret: str = DEV_JWT_SECRET
     jwt_expires_minutes: int = 15
     login_max_attempts: int = 10
     login_attempt_window_seconds: int = 300
-    smtp_host: str = "localhost"
+    smtp_host: str = "127.0.0.1"
     smtp_port: int = 1025
     smtp_from: str = "no-reply@crm-transporte.local"
-    clamav_host: str = "localhost"
+    clamav_host: str = "127.0.0.1"
     clamav_port: int = 3310
     attachments_dir: str = "./data/attachments"
     max_attachment_bytes: int = 10 * 1024 * 1024

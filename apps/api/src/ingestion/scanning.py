@@ -36,7 +36,7 @@ class ClamdScanner:
     contra el string de prueba EICAR.
     """
 
-    def __init__(self, host: str = "localhost", port: int = 3310, timeout: float = 10.0):
+    def __init__(self, host: str = "127.0.0.1", port: int = 3310, timeout: float = 10.0):
         self._host = host
         self._port = port
         self._timeout = timeout

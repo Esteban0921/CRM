@@ -34,10 +34,12 @@ uv run alembic upgrade head
 uv run python seed_dev.py   # staff@crmtransporte-demo.com / staff1234
 ```
 
-- Postgres: `localhost:5432` (usuario/clave/DB en `docker-compose.yml`)
-- Redis: `localhost:6379`
+- Postgres: `127.0.0.1:5432` (usuario/clave/DB en `docker-compose.yml`)
+- Redis: `127.0.0.1:6379`
 - Mailpit UI: `http://localhost:8025`
-- ClamAV: `localhost:3310` (la primera vez tarda: descarga firmas). Sin él, `POST /ingestion/run` responde 503 (RULE-016).
+- ClamAV: `127.0.0.1:3310` (la primera vez tarda: descarga firmas). Sin él, `POST /ingestion/run` responde 503 (RULE-016).
+
+Desde la API, conecta a estos servicios por `127.0.0.1`, no por `localhost`. En Windows `localhost` resuelve primero a `::1` (IPv6), donde Docker no publica nada, y cada conexión espera un timeout antes de probar IPv4 (TASK-0181). Si tu `apps/api/.env` es anterior, cambia `localhost` por `127.0.0.1` en `DATABASE_URL`.
 
 `GET /health` hace `SELECT 1`. Si Postgres no responde, 503 `Base de datos no disponible` — no un 200 vacío.
 
