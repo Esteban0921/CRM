@@ -97,6 +97,10 @@ export interface FamilyInvoice {
   status: FamilyInvoiceStatus;
   extracted_data: Record<string, unknown> | null;
   confidence: number | null;
+  /** Fecha en que quedo saldada, no la de emision (TASK-0102). */
+  paid_at?: string | null;
+  /** Total cobrado: distingue una factura saldada de una con pago parcial. */
+  paid_amount?: string;
   possible_duplicate?: boolean;
   days_in_queue?: number | null;
   days_overdue?: number | null;
@@ -161,6 +165,50 @@ export async function getFamilyInvoicePage(
  * toda la interfaz donde corregir lo que el extractor saco mal, que es
  * justamente el trabajo de la cola de revision (TASK-0127).
  */
+export type PaymentMethod = 'transfer' | 'direct_debit' | 'card' | 'cash' | 'other';
+
+export interface Payment {
+  id: string;
+  invoice_id: string;
+  amount: string;
+  currency: string;
+  paid_on: string;
+  method: PaymentMethod;
+  reference: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+/**
+ * Registra un cobro sobre una factura (TASK-0157).
+ *
+ * Un pago parcial no la salda: la factura sigue viva y su deuda es el resto.
+ * Eso es justo lo que no se podia expresar cuando «pagada» era solo un estado.
+ */
+export function addPayment(
+  token: string,
+  invoiceId: string,
+  payload: {
+    amount: string;
+    paid_on?: string;
+    method?: PaymentMethod;
+    reference?: string;
+    note?: string;
+  },
+): Promise<Payment> {
+  return request<Payment>(`/family-invoices/${invoiceId}/payments`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getPayments(token: string, invoiceId: string): Promise<Payment[]> {
+  return request<Payment[]>(`/family-invoices/${invoiceId}/payments`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export function updateFamilyInvoice(
   token: string,
   invoiceId: string,

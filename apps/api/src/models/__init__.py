@@ -6,6 +6,7 @@ from models.family import Family
 from models.family_invoice import FamilyInvoice
 from models.note import Note
 from models.notification_outbox import NotificationOutbox
+from models.payment import Payment
 from models.student import Student
 from models.supplier import Supplier
 from models.supplier_invoice import SupplierInvoice
@@ -21,6 +22,7 @@ __all__ = [
     "FamilyInvoice",
     "Note",
     "NotificationOutbox",
+    "Payment",
     "Student",
     "Supplier",
     "SupplierInvoice",

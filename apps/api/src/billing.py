@@ -33,7 +33,19 @@ def invoice_is_outstanding(invoice: FamilyInvoice, today: date | None = None) ->
 
 
 def invoice_amount(invoice: FamilyInvoice) -> Decimal:
+    """El importe nominal de la factura."""
     return invoice.amount if invoice.amount is not None else Decimal("0.00")
+
+
+def invoice_outstanding(invoice: FamilyInvoice) -> Decimal:
+    """Lo que queda por cobrar, ya descontados los pagos parciales (TASK-0157).
+
+    Una familia que ha pagado 40 de 100 debe 60, no 100. Sin esto, registrar un
+    pago parcial no cambiaria nada de lo que ve el staff y seria puro adorno.
+    """
+    cobrado = Decimal(str(getattr(invoice, "paid_amount", 0) or 0))
+    resto = invoice_amount(invoice) - cobrado
+    return resto if resto > Decimal("0.00") else Decimal("0.00")
 
 
 def unbilled_task_title(today: date | None = None) -> str:

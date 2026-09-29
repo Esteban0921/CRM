@@ -5,11 +5,12 @@ import enum
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import JSON, Date, Enum, ForeignKey, Numeric, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, Date, Enum, ForeignKey, Numeric, String, func, select
+from sqlalchemy.orm import Mapped, column_property, mapped_column
 
 from db import Base
 from models.mixins import IdMixin, TimestampMixin
+from models.payment import Payment
 
 
 class FamilyInvoiceStatus(enum.StrEnum):
@@ -42,5 +43,22 @@ class FamilyInvoice(IdMixin, TimestampMixin, Base):
         ),
         default=FamilyInvoiceStatus.PENDING_REVIEW,
     )
+    # Fecha en que la factura quedo saldada, no la de emision (TASK-0102).
+    # `collected_amount` se calculaba filtrando por `issue_date`: una factura
+    # de agosto pagada en septiembre no aparecia en el cierre de ningun mes.
+    paid_at: Mapped[datetime.date | None] = mapped_column(Date, default=None, index=True)
     extracted_data: Mapped[dict | None] = mapped_column(JSON, default=None)
     confidence: Mapped[float | None] = mapped_column(default=None)
+
+
+# Suma de los cobros de esta factura, como subconsulta correlacionada: sin esto
+# un pago parcial no reduciria la deuda y registrarlo seria puro adorno. Va en
+# el SELECT, asi que no hay N+1; y desde TASK-0126 los listados estan paginados,
+# con lo que el coste esta acotado.
+FamilyInvoice.paid_amount = column_property(
+    select(func.coalesce(func.sum(Payment.amount), 0))
+    .where(Payment.invoice_id == FamilyInvoice.id)
+    .correlate_except(Payment)
+    .scalar_subquery(),
+    deferred=False,
+)

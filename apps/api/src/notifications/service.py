@@ -7,7 +7,11 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from billing import invoice_amount, invoice_is_due_soon, invoice_is_overdue
+from billing import (
+    invoice_is_due_soon,
+    invoice_is_overdue,
+    invoice_outstanding,
+)
 from models.family import Family
 from models.family_invoice import FamilyInvoice
 from models.notification_outbox import NotificationKind
@@ -151,7 +155,7 @@ def notify_new_family_invoice(db: Session, invoice: FamilyInvoice) -> int:
 
 
 def compose_overdue_reminder(family_name: str, invoices: list[FamilyInvoice]) -> tuple[str, str]:
-    total = sum((invoice_amount(invoice) for invoice in invoices), Decimal("0.00"))
+    total = sum((invoice_outstanding(invoice) for invoice in invoices), Decimal("0.00"))
     subject = f"Recordatorio de pago — {family_name}"
     lines = [
         "Hola,",
@@ -190,7 +194,7 @@ def notify_overdue_invoices(db: Session) -> ReminderOutcome:
 
 
 def compose_due_soon_reminder(family_name: str, invoices: list[FamilyInvoice]) -> tuple[str, str]:
-    total = sum((invoice_amount(invoice) for invoice in invoices), Decimal("0.00"))
+    total = sum((invoice_outstanding(invoice) for invoice in invoices), Decimal("0.00"))
     subject = f"Vencimiento próximo — {family_name}"
     lines = [
         "Hola,",

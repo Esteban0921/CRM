@@ -101,12 +101,12 @@ apps/api/
     dependencies.py          # get_current_user, require_role, ensure_family_access
     audit.py                 # record_field_changes (RULE-009/TASK-0026)
     models/                  # User/Family/Student/Contract + Supplier/Email/Document/
-                              # FamilyInvoice/SupplierInvoice/AuditLog + Note/Task
+                              # FamilyInvoice/Payment/SupplierInvoice/AuditLog + Note/Task
     schemas/                 # Pydantic: uno por modelo de negocio
     routers/                 # health, auth, users, families (+export/anonymize/billing/activity,
                               # snapshot de cobro en el listado),
                               # students, contracts, family_invoices (+export.csv, /bulk, /claim-payment,
-                              # /confirm-payment), notes, tasks, ingestion, documents,
+                              # /confirm-payment, /payments), notes, tasks, ingestion, documents,
                               # billing (+summary/at-risk/unbilled/month-report),
                               # notifications (+inbox, overdue/due-soon reminders), search, emails
     ingestion/                # gmail_client (protocol) + fake_gmail_client, safe_zip,
@@ -250,6 +250,21 @@ o absoluta, y se sirve exclusivamente el fichero que apunta `file_path`: los
 dos fallbacks por nombre base -uno sobre `original_filename`, que lo controla
 quien manda el correo- devolvian los bytes de otro documento cuando el propio
 faltaba (TASK-0091).
+
+### Cobros: pagos parciales y fecha de cobro
+
+`POST /family-invoices/{id}/payments` (staff) registra un cobro con su fecha,
+importe, método y referencia; `GET` del mismo recurso los lista (el padre
+solo los de sus facturas publicadas, RULE-005/RULE-017). Un pago parcial no
+salda la factura: la deuda que se ve en familias, cierre del mes y
+recordatorios es ya `amount - pagado`. Se rechaza (422) cobrar más de lo que
+queda, una factura en revisión o una sin importe (TASK-0157).
+
+«Cobrado» en `/billing/summary` y `/billing/month-report` se mide por la
+fecha del **cobro**, no por la de emisión: una factura de agosto cobrada en
+septiembre cuenta en septiembre y ya no cambia el cierre de agosto
+(TASK-0102). La migración `bc7e2060710e` da fecha de cobro y un `Payment` a
+lo que ya constaba como `paid`.
 
 ### Avisos a las familias: bandeja de salida
 

@@ -254,3 +254,49 @@ test('el tablero carga por paginas y dice cuanto queda', async ({ page }) => {
   await expect.poll(() => offsetPedido).toBe('50');
   await expect(page.getByText(/999,00/)).toBeVisible();
 });
+
+test('staff registra un cobro parcial y la tarjeta dice cuanto va cobrado', async ({ page }) => {
+  const sent = {
+    ...PENDING_INVOICE,
+    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    amount: '150.00',
+    status: 'sent',
+    confidence: null,
+    paid_amount: '40.00',
+  };
+  let paymentBody: Record<string, unknown> | null = null;
+  await routeInvoices(page, [sent]);
+  await page.route(`${API}/family-invoices/${sent.id}/payments`, async (route) => {
+    paymentBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        invoice_id: sent.id,
+        currency: 'EUR',
+        method: 'transfer',
+        reference: null,
+        note: null,
+        created_at: '2026-09-29T10:00:00',
+        ...paymentBody,
+      },
+    });
+  });
+
+  await page.goto('/dashboard/invoices');
+  await expect(page.getByText(/Cobrado 40,00\s€ de 150,00\s€/)).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Registrar cobro de la factura de Familia Garcia', exact: true })
+    .click();
+
+  const dialog = page.getByRole('dialog', { name: 'Registrar cobro' });
+  // Precargado con lo que queda, no con el importe entero de la factura.
+  await expect(dialog.getByLabel('Importe cobrado')).toHaveValue('110.00');
+  await dialog.getByLabel('Importe cobrado').fill('60.00');
+  await dialog.getByLabel('Método').selectOption('cash');
+  await dialog.getByRole('button', { name: 'Registrar cobro', exact: true }).click();
+
+  await expect(page.getByText('Cobro registrado')).toBeVisible();
+  expect(paymentBody).toMatchObject({ amount: '60.00', method: 'cash' });
+  expect((paymentBody as Record<string, unknown> | null)?.paid_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+});

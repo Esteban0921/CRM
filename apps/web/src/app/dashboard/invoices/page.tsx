@@ -27,7 +27,7 @@ import {
   type FamilyInvoiceStatus,
 } from '@/lib/api';
 import { getStoredToken } from '@/lib/auth-storage';
-import { formatDate } from '@/lib/format';
+import { formatAmount, formatDate } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { Badge, Chip } from '@/components/ui/badge';
 import {
@@ -35,6 +35,7 @@ import {
   type InvoiceFieldEdits,
 } from '@/components/invoices/invoice-fields-editor';
 import { FamilyPickerDialog } from '@/components/invoices/family-picker';
+import { PaymentDialog } from '@/components/invoices/payment-dialog';
 import { Money } from '@/components/ui/money';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -73,6 +74,7 @@ export default function InvoiceReviewQueuePage() {
   const [totals, setTotals] = useState<Record<string, number>>({});
   const [loadingMore, setLoadingMore] = useState<FamilyInvoiceStatus | null>(null);
   const [pickerInvoice, setPickerInvoice] = useState<FamilyInvoice | null>(null);
+  const [paymentInvoice, setPaymentInvoice] = useState<FamilyInvoice | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor),
@@ -310,6 +312,12 @@ export default function InvoiceReviewQueuePage() {
         }}
         onClose={() => setPickerInvoice(null)}
       />
+      <PaymentDialog
+        invoice={paymentInvoice}
+        open={paymentInvoice !== null}
+        onClose={() => setPaymentInvoice(null)}
+        onRecorded={() => reload(focusFamilyId)}
+      />
       <PageHeader
         title="Cola de revisión"
         description="Asigna familia y publica. El padre no ve nada en pendiente de revisión."
@@ -415,6 +423,7 @@ export default function InvoiceReviewQueuePage() {
                 onToggleSelected={toggleSelected}
                 onMove={moveTo}
                 onOpenFamilyPicker={openFamilyPicker}
+                onRecordPayment={setPaymentInvoice}
                 onSaveFields={saveInvoiceFields}
               />
             ))}
@@ -425,6 +434,7 @@ export default function InvoiceReviewQueuePage() {
                 invoice={activeInvoice}
                 onMove={moveTo}
                 onOpenFamilyPicker={openFamilyPicker}
+                onRecordPayment={setPaymentInvoice}
                 onSaveFields={saveInvoiceFields}
                 dragging
               />
@@ -446,6 +456,7 @@ function Column({
   onToggleSelected,
   onMove,
   onOpenFamilyPicker,
+  onRecordPayment,
   onSaveFields,
 }: {
   column: { status: FamilyInvoiceStatus; label: string; accent: string };
@@ -457,6 +468,7 @@ function Column({
   onToggleSelected: (invoiceId: string) => void;
   onMove: (invoiceId: string, nextStatus: FamilyInvoiceStatus) => void;
   onOpenFamilyPicker: (invoice: FamilyInvoice) => void;
+  onRecordPayment: (invoice: FamilyInvoice) => void;
   onSaveFields: (invoiceId: string, edits: InvoiceFieldEdits) => Promise<void>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.status });
@@ -493,6 +505,7 @@ function Column({
               onToggleSelected={onToggleSelected}
               onMove={onMove}
               onOpenFamilyPicker={onOpenFamilyPicker}
+              onRecordPayment={onRecordPayment}
               onSaveFields={onSaveFields}
             />
           ))
@@ -513,6 +526,7 @@ function InvoiceCard({
   onToggleSelected,
   onMove,
   onOpenFamilyPicker,
+  onRecordPayment,
   onSaveFields,
   dragging = false,
 }: {
@@ -521,6 +535,7 @@ function InvoiceCard({
   onToggleSelected?: (invoiceId: string) => void;
   onMove: (invoiceId: string, nextStatus: FamilyInvoiceStatus) => void;
   onOpenFamilyPicker: (invoice: FamilyInvoice) => void;
+  onRecordPayment: (invoice: FamilyInvoice) => void;
   onSaveFields: (invoiceId: string, edits: InvoiceFieldEdits) => Promise<void>;
   dragging?: boolean;
 }) {
@@ -601,6 +616,24 @@ function InvoiceCard({
             onSave={(edits) => onSaveFields(invoice.id, edits)}
           />
         </div>
+        {invoice.status !== 'pending_review' && invoice.status !== 'paid' ? (
+          <div onPointerDown={(event) => event.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Registrar cobro de la factura de ${invoice.family_name ?? 'sin asignar'}`}
+              onClick={() => onRecordPayment(invoice)}
+            >
+              Registrar cobro
+            </Button>
+            {Number(invoice.paid_amount ?? 0) > 0 ? (
+              <Chip tone="emerald">
+                Cobrado {formatAmount(invoice.paid_amount, invoice.currency)} de{' '}
+                {formatAmount(invoice.amount, invoice.currency)}
+              </Chip>
+            ) : null}
+          </div>
+        ) : null}
         {/* Un boton, no un <select> con todas las familias dentro: ese select
             por tarjeta era el 80% de los nodos del DOM del tablero
             (TASK-0126). */}

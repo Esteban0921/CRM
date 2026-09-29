@@ -31,6 +31,10 @@ class FamilyInvoiceRead(BaseModel):
     issue_date: datetime.date | None
     due_date: datetime.date | None
     status: FamilyInvoiceStatus
+    # Fecha de COBRO y total cobrado: sin esto la UI no puede distinguir una
+    # factura saldada de una con un pago parcial (TASK-0102/0157).
+    paid_at: datetime.date | None = None
+    paid_amount: Decimal = Decimal("0.00")
     extracted_data: dict | None
     confidence: float | None
     possible_duplicate: bool = False

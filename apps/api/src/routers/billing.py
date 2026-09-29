@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 
 from billing import (
     expected_fees_by_family,
-    invoice_amount,
     invoice_is_due_soon,
     invoice_is_outstanding,
     invoice_is_overdue,
+    invoice_outstanding,
     month_bounds,
     promote_overdue_invoices,
     unbilled_by_family,
@@ -27,6 +27,7 @@ from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
 from models.task import Task, TaskStatus
 from models.user import User, UserRole
+from payments import collected_between, collected_between_by_family
 from schemas.billing import (
     AtRiskFamily,
     FamilyMonthRow,
@@ -65,16 +66,10 @@ def staff_billing_summary(
         ),
         Decimal("0.00"),
     )
-    collected = sum(
-        (
-            invoice_amount(invoice)
-            for invoice in invoices
-            if invoice.status == FamilyInvoiceStatus.PAID
-            and invoice.issue_date is not None
-            and month_start <= invoice.issue_date <= month_end
-        ),
-        Decimal("0.00"),
-    )
+    # Por fecha de COBRO, no de emision (TASK-0102): un cobro de septiembre
+    # sobre una factura de agosto era invisible en septiembre y cambiaba
+    # retroactivamente el cierre de agosto.
+    collected = collected_between(db, month_start, month_end)
     today = date.today()
     return StaffBillingSummary(
         pending_review_count=pending,
@@ -82,16 +77,18 @@ def staff_billing_summary(
         families_with_debt=len(families_with_debt),
         families_count=db.query(Family).count(),
         overdue_amount=sum(
-            (invoice_amount(invoice) for invoice in overdue_invoices), Decimal("0.00")
+            (invoice_outstanding(invoice) for invoice in overdue_invoices), Decimal("0.00")
         ),
         outstanding_amount=sum(
-            (invoice_amount(invoice) for invoice in outstanding), Decimal("0.00")
+            (invoice_outstanding(invoice) for invoice in outstanding), Decimal("0.00")
         ),
         year_month=f"{today.year:04d}-{today.month:02d}",
         expected_amount=expected,
         collected_amount=collected,
         due_soon_count=len(due_soon),
-        due_soon_amount=sum((invoice_amount(invoice) for invoice in due_soon), Decimal("0.00")),
+        due_soon_amount=sum(
+            (invoice_outstanding(invoice) for invoice in due_soon), Decimal("0.00")
+        ),
         pending_tasks=db.query(Task).filter(Task.status == TaskStatus.PENDING).count(),
         failed_emails=db.query(Email)
         .filter(Email.processing_status == EmailProcessingStatus.FAILED)
@@ -130,7 +127,7 @@ def list_at_risk_families(
             AtRiskFamily(
                 id=family.id,
                 name=family.name,
-                overdue_amount=sum((invoice_amount(i) for i in group), Decimal("0.00")),
+                overdue_amount=sum((invoice_outstanding(i) for i in group), Decimal("0.00")),
                 overdue_count=len(group),
                 pending_tasks=tasks_by_family[family_id],
             )
@@ -216,15 +213,14 @@ def staff_month_report(
     collected: dict = defaultdict(lambda: Decimal("0.00"))
     outstanding: dict = defaultdict(lambda: Decimal("0.00"))
     overdue: dict = defaultdict(lambda: Decimal("0.00"))
+    for family_id, importe in collected_between_by_family(db, start, end).items():
+        collected[family_id] += importe
     for invoice in invoices:
         family_id = invoice.family_id
-        if invoice.status == FamilyInvoiceStatus.PAID and invoice.issue_date is not None:
-            if start <= invoice.issue_date <= end:
-                collected[family_id] += invoice_amount(invoice)
         if invoice_is_outstanding(invoice):
-            outstanding[family_id] += invoice_amount(invoice)
+            outstanding[family_id] += invoice_outstanding(invoice)
         if invoice_is_overdue(invoice):
-            overdue[family_id] += invoice_amount(invoice)
+            overdue[family_id] += invoice_outstanding(invoice)
     family_ids = set(expected) | set(collected) | set(outstanding) | set(overdue)
     families = (
         {family.id: family for family in db.query(Family).filter(Family.id.in_(family_ids)).all()}

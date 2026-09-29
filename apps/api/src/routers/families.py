@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 
 from audit import record_field_changes, record_redaction, redact_existing_audit_trail
 from billing import (
-    invoice_amount,
     invoice_is_due_soon,
     invoice_is_outstanding,
     invoice_is_overdue,
+    invoice_outstanding,
     promote_overdue_invoices,
     unbilled_by_family,
 )
@@ -64,9 +64,9 @@ def list_families(
     overdue: dict = defaultdict(lambda: Decimal("0.00"))
     for invoice in db.query(FamilyInvoice).filter(FamilyInvoice.family_id.isnot(None)).all():
         if invoice_is_outstanding(invoice):
-            outstanding[invoice.family_id] += invoice_amount(invoice)
+            outstanding[invoice.family_id] += invoice_outstanding(invoice)
         if invoice_is_overdue(invoice):
-            overdue[invoice.family_id] += invoice_amount(invoice)
+            overdue[invoice.family_id] += invoice_outstanding(invoice)
     gaps = unbilled_by_family(db)
     return [
         FamilyRead.model_validate(family).model_copy(
@@ -113,13 +113,13 @@ def get_family_billing(
     overdue = [i for i in invoices if invoice_is_overdue(i)]
     due_soon = [i for i in invoices if invoice_is_due_soon(i)]
     return FamilyBilling(
-        outstanding_amount=sum((invoice_amount(i) for i in outstanding), Decimal("0.00")),
-        overdue_amount=sum((invoice_amount(i) for i in overdue), Decimal("0.00")),
+        outstanding_amount=sum((invoice_outstanding(i) for i in outstanding), Decimal("0.00")),
+        overdue_amount=sum((invoice_outstanding(i) for i in overdue), Decimal("0.00")),
         overdue_count=len(overdue),
         sent_count=sum(1 for i in invoices if i.status == FamilyInvoiceStatus.SENT),
         paid_count=sum(1 for i in invoices if i.status == FamilyInvoiceStatus.PAID),
         due_soon_count=len(due_soon),
-        due_soon_amount=sum((invoice_amount(i) for i in due_soon), Decimal("0.00")),
+        due_soon_amount=sum((invoice_outstanding(i) for i in due_soon), Decimal("0.00")),
     )
 
 

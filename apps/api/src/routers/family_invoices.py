@@ -26,12 +26,18 @@ from invoice_state import (
 from models.audit_log import AuditedEntityType
 from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
+from models.payment import Payment
 from models.task import Task, TaskStatus
 from models.user import User, UserRole
 from notifications.service import (
     PAYMENT_CLAIM_TITLE,
     close_payment_claim_tasks,
     notify_new_family_invoice,
+)
+from payments import (
+    outstanding_for,
+    record_payment,
+    settle_without_payment_record,
 )
 from routers.tasks import _with_family_names as _tasks_with_family_names
 from schemas.billing import (
@@ -41,6 +47,7 @@ from schemas.billing import (
     FamilyInvoiceBulkUpdate,
 )
 from schemas.family_invoice import FamilyInvoiceRead, FamilyInvoiceUpdate
+from schemas.payment import PaymentCreate, PaymentRead
 from schemas.task import TaskRead
 
 router = APIRouter(prefix="/family-invoices", tags=["family-invoices"])
@@ -279,6 +286,10 @@ def update_family_invoice(
             changes["due_date"] = invoice.due_date
     if previous_status != FamilyInvoiceStatus.PAID and invoice.status == FamilyInvoiceStatus.PAID:
         close_payment_claim_tasks(db, invoice)
+        # Marcar «pagada» a mano tambien tiene que dejar un cobro: si no, la
+        # factura constaria pagada y la suma de pagos seria cero, con lo que su
+        # importe desapareceria del cierre del mes (TASK-0157).
+        settle_without_payment_record(db, invoice, recorded_by=staff.id)
     record_field_changes(
         db,
         entity_type=AuditedEntityType.FAMILY_INVOICE,
@@ -414,3 +425,87 @@ def confirm_payment(
         db=db,
         staff=staff,
     )
+
+
+@router.get("/{invoice_id}/payments", response_model=list[PaymentRead])
+def list_payments(
+    invoice_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[Payment]:
+    """Cobros de una factura. El padre solo ve los de la suya, y nunca los de
+    una factura en revision (RULE-005 / RULE-017).
+    """
+    invoice = db.get(FamilyInvoice, invoice_id)
+    if invoice is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurso no encontrado")
+    ensure_family_access(user, invoice.family_id)
+    if user.role == UserRole.PARENT and invoice.status == FamilyInvoiceStatus.PENDING_REVIEW:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurso no encontrado")
+    return (
+        db.query(Payment).filter(Payment.invoice_id == invoice_id).order_by(Payment.paid_on).all()
+    )
+
+
+@router.post(
+    "/{invoice_id}/payments",
+    response_model=PaymentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_payment(
+    invoice_id: uuid.UUID,
+    payload: PaymentCreate,
+    db: Session = Depends(get_db),
+    staff: User = Depends(require_role(UserRole.STAFF, UserRole.ADMIN)),
+) -> Payment:
+    """Registra un cobro, total o parcial (TASK-0157).
+
+    Un pago parcial NO salda la factura: sigue viva y su deuda es el resto. Eso
+    es justo lo que no se podia expresar cuando `paid` era solo un `status`.
+    """
+    invoice = db.get(FamilyInvoice, invoice_id)
+    if invoice is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Factura no encontrada")
+    if invoice.status == FamilyInvoiceStatus.PENDING_REVIEW:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Publica la factura antes de registrar un cobro",
+        )
+    if invoice.amount is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "La factura no tiene importe: no se puede saber si queda saldada",
+        )
+    pendiente = outstanding_for(db, invoice)
+    if payload.amount > pendiente:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"El cobro ({payload.amount}) supera lo que queda pendiente ({pendiente})",
+        )
+
+    before = {"status": invoice.status, "paid_at": invoice.paid_at}
+    payment = record_payment(
+        db,
+        invoice,
+        amount=payload.amount,
+        paid_on=payload.paid_on or datetime.date.today(),
+        method=payload.method,
+        reference=payload.reference,
+        note=payload.note,
+        recorded_by=staff.id,
+    )
+    # Saldar con un cobro cambia el estado igual que el PATCH, asi que deja el
+    # mismo rastro: sin esto el historial no explica quien la dio por pagada.
+    record_field_changes(
+        db,
+        entity_type=AuditedEntityType.FAMILY_INVOICE,
+        entity_id=invoice.id,
+        editor_id=staff.id,
+        before=before,
+        after={"status": invoice.status, "paid_at": invoice.paid_at},
+    )
+    if invoice.status == FamilyInvoiceStatus.PAID:
+        close_payment_claim_tasks(db, invoice)
+    db.commit()
+    db.refresh(payment)
+    return payment

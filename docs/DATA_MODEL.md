@@ -150,10 +150,34 @@ otro ciclo de vida y otros campos.
 - issueDate (igual, desde `extracted_data.issue_date`)
 - dueDate (si staff publica sin fecha, se rellena a issueDate+30 días — TASK-0053)
 - status (`pending_review` | `sent` | `paid` | `overdue`) — no se puede salir de `pending_review` sin `familyId`. El padre puede avisar «he pagado» (`POST /family-invoices/{id}/claim-payment`, TASK-0068): crea una `Task` de staff y **no** cambia el estado. Staff confirma con `POST /family-invoices/{id}/confirm-payment` (TASK-0071) o al pasar a `paid`; eso cierra la tarea. El padre no recibe `extractedData` (TASK-0074).
+- paidAt (fecha en que quedó saldada, la del **último** cobro que la cubre — TASK-0102; nullable)
+- paidAmount (calculado, no es columna: suma de sus `Payment`. La deuda de una factura es `amount - paidAmount` — TASK-0157)
 - extractedData (JSON; copia cruda de la extracción, no es lo que ve el padre)
 - confidence (float)
 - createdAt
 - updatedAt
+
+### Payment (TASK-0157) ✅
+
+Un cobro real sobre una `FamilyInvoice`. Antes `paid` era solo un valor de
+`status`: sin fecha de cobro, sin importe, sin método y sin pagos parciales.
+
+- id
+- invoiceId (FK → FamilyInvoice)
+- amount (> 0; nunca supera lo que queda pendiente)
+- currency (la de la factura)
+- paidOn (fecha en que **entró el dinero**; es la que cuenta para el cierre del mes, no `createdAt`)
+- method (`transfer` | `direct_debit` | `card` | `cash` | `other`)
+- reference (nullable)
+- note (nullable)
+- recordedBy (FK → User, nullable)
+- createdAt
+
+Reglas: un pago parcial deja la factura viva y su deuda baja al resto;
+cuando los pagos cubren el importe pasa a `paid` con `paidAt` = fecha del
+último pago, y queda en el audit trail. Marcar `paid` a mano (PATCH, `/bulk`,
+`/confirm-payment`) registra un `Payment` por lo que faltase, con método
+`other`. «Cobrado en el mes» suma `Payment.paidOn` dentro del mes (TASK-0102).
 
 ### SupplierInvoice
 

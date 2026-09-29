@@ -6,6 +6,7 @@ from models.document import Document, DocumentType
 from models.email import Email
 from models.family import Family
 from models.family_invoice import FamilyInvoice, FamilyInvoiceStatus
+from models.payment import Payment
 from models.user import User, UserRole
 from security import create_access_token, hash_password
 
@@ -15,7 +16,15 @@ def _auth_header(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _invoice(db_session, family_id, *, status, amount, due_date=None, issue_date=None):
+def _invoice(
+    db_session, family_id, *, status, amount, due_date=None, issue_date=None, paid_on=None
+):
+    """Una factura `paid` nace con su cobro registrado.
+
+    Desde TASK-0102 "cobrado" se mide por fecha de COBRO, no de emision: una
+    factura marcada `paid` sin ningun `Payment` detras no esta cobrada, esta
+    mal registrada. La migracion hace lo mismo con los datos historicos.
+    """
     email = Email(gmail_id=f"bill-{uuid.uuid4()}")
     db_session.add(email)
     db_session.commit()
@@ -32,8 +41,18 @@ def _invoice(db_session, family_id, *, status, amount, due_date=None, issue_date
         due_date=due_date,
         issue_date=issue_date,
     )
+    invoice.paid_at = paid_on or issue_date if status == FamilyInvoiceStatus.PAID else None
     db_session.add(invoice)
     db_session.commit()
+    if status == FamilyInvoiceStatus.PAID:
+        db_session.add(
+            Payment(
+                invoice_id=invoice.id,
+                amount=Decimal(amount),
+                paid_on=invoice.paid_at or datetime.date.today(),
+            )
+        )
+        db_session.commit()
     return invoice
 
 
